@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+option go_package = "github.com/ThetaRangers/SDCC/operations";
+
+package operations;
+
+service Operations {
+  rpc Get (Key) returns (Value) {}
+  rpc Put (KeyValue) returns (Ack) {}
+  rpc Append (KeyValue) returns (Ack) {}
+  rpc Del (Key) returns (Ack) {}
+}
+
+message Key {
+  bytes key = 1;
+}
+
+message Value {
+  repeated bytes value = 1;
+}
+
+message KeyValue {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message Ack {
+  string msg = 1;
+}
