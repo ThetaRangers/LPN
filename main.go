@@ -13,6 +13,18 @@ func handle(err error) {
 	}
 }
 
+func del(key []byte, db badger.DB){
+
+	err := db.Update(func(txn *badger.Txn) error {
+		err := txn.Delete(key)
+		handle(err)
+
+		return nil
+	})
+
+	handle(err)
+}
+
 func put(key, value []byte, db badger.DB) {
 	entry := make([][]byte, 0)
 	entry = append(entry, value)
@@ -104,4 +116,9 @@ func main() {
 	for i := 0; i < len(slice); i++ {
 		fmt.Printf("Cocci-%d: %s\n", i, slice[i])
 	}
+
+	del([]byte(key), *db)
+	slice = get([]byte(key), *db)
+
+
 }
