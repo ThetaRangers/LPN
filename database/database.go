@@ -74,7 +74,7 @@ func Append(key []byte, value []byte, db badger.DB) {
 	handle(err)
 }
 
-func Del(key []byte, db badger.DB){
+func Del(key []byte, db badger.DB) {
 
 	err := db.Update(func(txn *badger.Txn) error {
 		err := txn.Delete(key)
