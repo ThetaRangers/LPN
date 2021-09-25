@@ -1,51 +1,58 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/dgraph-io/badger"
 	"log"
+	"os"
 )
 
-func main() {
-	db, err := badger.Open(badger.DefaultOptions("/tmp/badger"))
-
+func handle(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+}
+
+func main() {
+
+	//Open badger DB
+	db, err := badger.Open(badger.DefaultOptions("badgerDB"))
+	handle(err)
+
+	defer func(db *badger.DB) {
+		err := db.Close()
+		handle(err)
+	}(db)
+
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Print("Enter key: ")
+	key, _ := reader.ReadString('\n')
+
+	fmt.Print("Enter value: ")
+	value, _ := reader.ReadString('\n')
 
 	err = db.Update(func(txn *badger.Txn) error {
-		e := badger.NewEntry([]byte("answer"), []byte("42"))
+		e := badger.NewEntry([]byte(key), []byte(value))
 		err := txn.SetEntry(e)
 		return err
 	})
 
+	var _, valCopy []byte
+
 	err = db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte("answer"))
-		if err != nil {
-			log.Fatal(err)
-		}
+		item, err := txn.Get([]byte(key))
+		handle(err)
 
-		var _, valCopy []byte
 		err = item.Value(func(val []byte) error {
-			// This func with val would only be called if item.Value encounters no error.
-
-			// Accessing val here is valid.
-			fmt.Printf("The answer is: %s\n", val)
-
-			// Copying or parsing val is valid.
-			valCopy = append([]byte{}, val...)
 			return nil
 		})
 
-		// You must copy it to use it outside item.Value(...).
-		fmt.Printf("The answer is: %s\n", valCopy)
-
-		// Alternatively, you could also use item.ValueCopy().
 		valCopy, err = item.ValueCopy(nil)
-		fmt.Printf("The answer is: %s\n", valCopy)
-
 		return nil
 	})
+
+	fmt.Printf("The value is: %s\n", valCopy)
 
 }
