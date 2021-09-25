@@ -1,17 +1,78 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"github.com/dgraph-io/badger"
 	"log"
-	"os"
 )
 
 func handle(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func put(key, value []byte, db badger.DB) {
+	entry := make([][]byte, 0)
+	entry = append(entry, value)
+
+	var buffer []byte
+	buffer, err := json.Marshal(entry)
+	handle(err)
+
+	err = db.Update(func(txn *badger.Txn) error {
+		e := badger.NewEntry(key, buffer)
+		err := txn.SetEntry(e)
+		return err
+	})
+	handle(err)
+}
+
+func get(key []byte, db badger.DB) [][]byte {
+	var slice [][]byte
+
+	err := db.View(func(txn *badger.Txn) error {
+		var valCopy []byte
+		item, err := txn.Get(key)
+		handle(err)
+
+		valCopy, err = item.ValueCopy(nil)
+
+		err = json.Unmarshal(valCopy, &slice)
+		handle(err)
+
+		return nil
+	})
+
+	handle(err)
+
+	return slice
+}
+
+func append_db(key []byte, value []byte, db badger.DB) {
+	err := db.Update(func(txn *badger.Txn) error {
+		var valCopy []byte
+		var buffer []byte
+
+		item, err := txn.Get(key)
+
+		valCopy, err = item.ValueCopy(nil)
+
+		var slice [][]byte
+		err = json.Unmarshal(valCopy, &slice)
+		handle(err)
+		slice = append(slice, value)
+
+		buffer, err = json.Marshal(slice)
+		handle(err)
+
+		e := badger.NewEntry(key, buffer)
+		err = txn.SetEntry(e)
+
+		return err
+	})
+	handle(err)
 }
 
 func main() {
@@ -25,34 +86,22 @@ func main() {
 		handle(err)
 	}(db)
 
-	reader := bufio.NewReader(os.Stdin)
+	key := "Ciao"
 
-	fmt.Print("Enter key: ")
-	key, _ := reader.ReadString('\n')
+	put([]byte(key), []byte("nyan"), *db)
 
-	fmt.Print("Enter value: ")
-	value, _ := reader.ReadString('\n')
+	handle(err)
 
-	err = db.Update(func(txn *badger.Txn) error {
-		e := badger.NewEntry([]byte(key), []byte(value))
-		err := txn.SetEntry(e)
-		return err
-	})
+	slice := get([]byte(key), *db)
 
-	var _, valCopy []byte
+	for i := 0; i < len(slice); i++ {
+		fmt.Printf("Cocci-%d: %s\n", i, slice[i])
+	}
 
-	err = db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key))
-		handle(err)
+	append_db([]byte(key), []byte("cat"), *db)
+	slice = get([]byte(key), *db)
 
-		err = item.Value(func(val []byte) error {
-			return nil
-		})
-
-		valCopy, err = item.ValueCopy(nil)
-		return nil
-	})
-
-	fmt.Printf("The value is: %s\n", valCopy)
-
+	for i := 0; i < len(slice); i++ {
+		fmt.Printf("Cocci-%d: %s\n", i, slice[i])
+	}
 }
