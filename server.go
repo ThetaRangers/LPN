@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/dgraph-io/badger"
 	"log"
 	"net"
 
@@ -15,7 +14,7 @@ const (
 	port = ":50051"
 )
 
-var database *badger.DB
+var database db.Database
 
 type server struct {
 	pb.UnimplementedOperationsServer
@@ -23,41 +22,29 @@ type server struct {
 
 func (s *server) Get(_ context.Context, in *pb.Key) (*pb.Value, error) {
 	log.Printf("Received: Get(%v)", in.GetKey())
-	return &pb.Value{Value: db.Get(in.GetKey(), *database)}, nil
+	return &pb.Value{Value: database.Get(in.GetKey())}, nil
 }
 
 func (s *server) Put(_ context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	log.Printf("Received: Put(%v, %v)", in.GetKey(), in.GetValue())
-	db.Put(in.GetKey(), in.GetValue(), *database)
+	database.Put(in.GetKey(), in.GetValue())
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
 func (s *server) Append(_ context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	log.Printf("Received: Append(%v, %v)", in.GetKey(), in.GetValue())
-	db.Append(in.GetKey(), in.GetValue(), *database)
+	database.Append(in.GetKey(), in.GetValue())
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
 func (s *server) Del(_ context.Context, in *pb.Key) (*pb.Ack, error) {
 	log.Printf("Received: Del(%v)", in.GetKey())
-	db.Del(in.GetKey(), *database)
+	database.Del(in.GetKey())
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
 func main() {
-	//Open badger DB
-	var err error
-	database, err = badger.Open(badger.DefaultOptions("badgerDB"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func(db *badger.DB) {
-		err := db.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(database)
-
+	database = db.BadgerDB{} // TODO read configuration file
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
