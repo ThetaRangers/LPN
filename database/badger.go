@@ -4,30 +4,14 @@ import (
 	"encoding/json"
 	"github.com/dgraph-io/badger"
 	"log"
-	"sync"
 )
 
-var once sync.Once
-
 type BadgerDB struct {
-	db *badger.DB
-}
-
-var instance *BadgerDB
-
-func getInstance() *BadgerDB {
-	once.Do(func() {
-		database, err := badger.Open(badger.DefaultOptions("badgerDB"))
-		if err != nil {
-			log.Fatal(err)
-		}
-		instance = &BadgerDB{db: database}
-	})
-	return instance
+	Db *badger.DB
 }
 
 func (b *BadgerDB) getDB() badger.DB {
-	return *b.db
+	return *b.Db
 }
 
 func handle(err error) {
@@ -38,7 +22,7 @@ func handle(err error) {
 
 func (b BadgerDB) Get(key []byte) [][]byte {
 	var slice [][]byte
-	db := getInstance().getDB()
+	db := b.getDB()
 	err := db.View(func(txn *badger.Txn) error {
 		var valCopy []byte
 		item, err := txn.Get(key)
@@ -65,7 +49,7 @@ func (b BadgerDB) Put(key, value []byte) {
 	buffer, err := json.Marshal(entry)
 	handle(err)
 
-	db := getInstance().getDB()
+	db := b.getDB()
 	err = db.Update(func(txn *badger.Txn) error {
 		e := badger.NewEntry(key, buffer)
 		err := txn.SetEntry(e)
@@ -75,7 +59,7 @@ func (b BadgerDB) Put(key, value []byte) {
 }
 
 func (b BadgerDB) Append(key, value []byte) {
-	db := getInstance().getDB()
+	db := b.getDB()
 	err := db.Update(func(txn *badger.Txn) error {
 		var valCopy []byte
 		var buffer []byte
@@ -101,7 +85,7 @@ func (b BadgerDB) Append(key, value []byte) {
 }
 
 func (b BadgerDB) Del(key []byte) {
-	db := getInstance().getDB()
+	db := b.getDB()
 	err := db.Update(func(txn *badger.Txn) error {
 		err := txn.Delete(key)
 		handle(err)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"SDCC/utils"
 	"context"
 	"log"
 	"net"
@@ -43,8 +44,11 @@ func (s *server) Del(_ context.Context, in *pb.Key) (*pb.Ack, error) {
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
+func init() {
+	database = utils.GetConfiguration().Database
+}
+
 func main() {
-	database = db.BadgerDB{} // TODO read configuration file
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)

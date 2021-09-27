@@ -1,0 +1,47 @@
+package utils
+
+import (
+	db "SDCC/database"
+	"encoding/json"
+	"github.com/dgraph-io/badger"
+	"log"
+	"os"
+)
+
+type Configuration struct {
+	Database db.Database
+}
+
+func GetConfiguration() Configuration {
+	file, err := os.Open("config.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func(file *os.File) {
+		err = file.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(file)
+	decoder := json.NewDecoder(file)
+	parser := struct {
+		Database string
+	}{}
+	err = decoder.Decode(&parser)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var database db.Database
+	if parser.Database == "badger" {
+		badgerDB, err := badger.Open(badger.DefaultOptions("badgerDB"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		database = db.BadgerDB{Db: badgerDB}
+	} else {
+		database = nil // TODO handle default
+	}
+
+	return Configuration{Database: database}
+}
