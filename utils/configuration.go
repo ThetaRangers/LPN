@@ -4,6 +4,7 @@ import (
 	db "SDCC/database"
 	"encoding/json"
 	"github.com/dgraph-io/badger"
+	"github.com/patrickmn/go-cache"
 	"log"
 	"os"
 )
@@ -39,6 +40,8 @@ func GetConfiguration() Configuration {
 			log.Fatal(err)
 		}
 		database = db.BadgerDB{Db: badgerDB}
+	} else if parser.Database == "go-cache" {
+		database = db.GoCache{Cache: cache.New(cache.NoExpiration, 0)}
 	} else {
 		database = nil // TODO handle default
 	}

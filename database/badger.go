@@ -10,10 +10,6 @@ type BadgerDB struct {
 	Db *badger.DB
 }
 
-func (b *BadgerDB) getDB() badger.DB {
-	return *b.Db
-}
-
 func handle(err error) {
 	if err != nil {
 		log.Fatal(err)
@@ -22,8 +18,7 @@ func handle(err error) {
 
 func (b BadgerDB) Get(key []byte) [][]byte {
 	var slice [][]byte
-	db := b.getDB()
-	err := db.View(func(txn *badger.Txn) error {
+	err := b.Db.View(func(txn *badger.Txn) error {
 		var valCopy []byte
 		item, err := txn.Get(key)
 		handle(err)
@@ -49,8 +44,7 @@ func (b BadgerDB) Put(key, value []byte) {
 	buffer, err := json.Marshal(entry)
 	handle(err)
 
-	db := b.getDB()
-	err = db.Update(func(txn *badger.Txn) error {
+	err = b.Db.Update(func(txn *badger.Txn) error {
 		e := badger.NewEntry(key, buffer)
 		err := txn.SetEntry(e)
 		return err
@@ -59,8 +53,7 @@ func (b BadgerDB) Put(key, value []byte) {
 }
 
 func (b BadgerDB) Append(key, value []byte) {
-	db := b.getDB()
-	err := db.Update(func(txn *badger.Txn) error {
+	err := b.Db.Update(func(txn *badger.Txn) error {
 		var valCopy []byte
 		var buffer []byte
 
@@ -85,8 +78,7 @@ func (b BadgerDB) Append(key, value []byte) {
 }
 
 func (b BadgerDB) Del(key []byte) {
-	db := b.getDB()
-	err := db.Update(func(txn *badger.Txn) error {
+	err := b.Db.Update(func(txn *badger.Txn) error {
 		err := txn.Delete(key)
 		handle(err)
 
