@@ -14,9 +14,8 @@ import (
 )
 
 var targetId string
-
-var m = 2
 var b = 4
+var m = 2
 var base = int(math.Pow(2, float64(b)))
 var n = 128
 var rows int
@@ -27,11 +26,17 @@ type metadataStruct struct {
 	ipAddress string
 }
 
+type routingTableEntry struct {
+	nodeId    string
+	ipAddress string
+	valid     int
+}
+
 type stateTableStruct struct {
-	leafSetLower   []metadataStruct
-	leafSetGreater []metadataStruct
-	neighbourSet   []metadataStruct
-	routingTable   [][]metadataStruct
+	leafSetLower   []routingTableEntry
+	leafSetGreater []routingTableEntry
+	neighbourSet   []routingTableEntry
+	routingTable   [][]routingTableEntry
 }
 
 var metadata metadataStruct
@@ -77,6 +82,11 @@ func connectToNode(fullAddress string) {
 }
 
 func prefixMatch(a, b string) int {
+
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+
 	count := 0
 	for i := 0; i < len(a); i++ {
 		//Check if char is the same
@@ -90,41 +100,74 @@ func prefixMatch(a, b string) int {
 
 func route(key string) {
 
-	x, _ := strconv.ParseInt(key, base, 0)
-	var dest metadataStruct
-
-	if len(stateTable.leafSetLower) == 0 && len(stateTable.leafSetGreater) == 0 {
-		//Empty
+	x, err := strconv.ParseInt(key, base, 0)
+	if err != nil {
+		fmt.Println("Error parsing key")
 	}
 
-	//Search in the leaf set
-	leafSetLowerNumber, _ := strconv.ParseInt(stateTable.leafSetLower[0].nodeId, base, 0)
-	leafSetGreaterNumber, _ := strconv.ParseInt(stateTable.leafSetLower[0].nodeId, base, 0)
+	var dest routingTableEntry
 
-	if x > leafSetLowerNumber && x < leafSetGreaterNumber {
-		//In the leaf set
+	if len(stateTable.leafSetLower) != 0 && len(stateTable.leafSetGreater) != 0 {
+		//Search in the leaf set
+		leafSetLowerNumber, _ := strconv.ParseInt(stateTable.leafSetLower[0].nodeId, base, 0)
+		leafSetGreaterNumber, _ := strconv.ParseInt(stateTable.leafSetLower[0].nodeId, base, 0)
 
-	} else {
-		//Plaxton Routing
-		max := 0
-		var currentMax metadataStruct
+		if x > leafSetLowerNumber && x < leafSetGreaterNumber {
 
-		for row := 0; row < rows; row++ {
-			//TODO Second for not needed just look at the last digit
-			for col := 0; col < b; col++ {
-				pm := prefixMatch(key, stateTable.routingTable[row][col].nodeId)
-				if pm > max {
-					//Update max
-					max = pm
-					currentMax = stateTable.routingTable[row][col]
+			//In the leaf set
+			min := big.MaxPrec
+			//TODO remove repetition
+			//TODO are ordered?
+			for i := 0; i < len(stateTable.leafSetLower); i++ {
+				num, _ := strconv.ParseInt(stateTable.leafSetLower[i].nodeId, base, 0)
+				diff := int(math.Abs(float64(x - num)))
+
+				if diff < min {
+					min = diff
+					dest = stateTable.leafSetLower[i]
 				}
 			}
-		}
 
-		dest = currentMax
+			for i := 0; i < len(stateTable.leafSetGreater); i++ {
+				num, _ := strconv.ParseInt(stateTable.leafSetGreater[0].nodeId, base, 0)
+				diff := int(math.Abs(float64(x - num)))
+
+				if diff < min {
+					min = diff
+					dest = stateTable.leafSetGreater[i]
+				}
+			}
+
+			fmt.Println("Routed to: ", dest)
+			return
+		}
+	}
+
+	//Plaxton Routing
+	max := 0
+	var currentMax routingTableEntry
+
+	for row := 0; row < rows; row++ {
+		//TODO Second for not needed just look at the last digit?
+		for col := 0; col < b; col++ {
+			pm := prefixMatch(key, stateTable.routingTable[row][col].nodeId)
+
+			if pm > max {
+				//Update max
+				max = pm
+				currentMax = stateTable.routingTable[row][col]
+			}
+		}
+	}
+
+	//Not found
+	if currentMax.valid == 0 {
+		//Route to this node
+		dest = routingTableEntry{nodeId: metadata.nodeId, ipAddress: metadata.ipAddress}
 	}
 
 	fmt.Println("Routed to: ", dest)
+	return
 }
 
 func generateId(x string) string {
@@ -187,20 +230,26 @@ func main() {
 	rows = int(math.Log(math.Pow(2, float64(n))) / math.Log(math.Pow(2, float64(b))))
 	cols = int(math.Pow(2, float64(b)) - 1)
 
-	fmt.Println("Routing table dimensions ROWS:", rows, " B:", b)
-	stateTable.routingTable = make([][]metadataStruct, rows)
+	stateTable.routingTable = make([][]routingTableEntry, rows)
 	for i := 0; i < rows; i++ {
-		stateTable.routingTable[i] = make([]metadataStruct, cols)
+		stateTable.routingTable[i] = make([]routingTableEntry, cols)
+		for j := 0; j < cols; j++ {
+			stateTable.routingTable[i][j] = routingTableEntry{nodeId: "", valid: 0}
+		}
 	}
 
 	//Initialize leaf set
 	l := int(math.Pow(2, float64(b)))
-	stateTable.leafSetLower = make([]metadataStruct, l/2)
-	stateTable.leafSetGreater = make([]metadataStruct, l/2)
-	fmt.Println("Initilized Leaf set with size:", l)
+	stateTable.leafSetLower = make([]routingTableEntry, l/2)
+	stateTable.leafSetGreater = make([]routingTableEntry, l/2)
+
+	for i := 0; i < l/2; i++ {
+		stateTable.leafSetLower[i] = routingTableEntry{nodeId: "", valid: 0}
+		stateTable.leafSetGreater[i] = routingTableEntry{nodeId: "", valid: 0}
+	}
+	fmt.Println("Initialized Leaf set with size:", l)
 
 	fmt.Printf("fullAddress %s nodeId %s\n", fullAddress, nodeId)
-	fmt.Println("GRR: ", len(nodeId))
 
 	listener, err := net.Listen("tcp", fullAddress)
 	if err != nil {
@@ -209,6 +258,8 @@ func main() {
 
 	metadata.nodeId = nodeId
 	metadata.ipAddress = fullAddress
+
+	route(generateId("halo"))
 
 	if len(argsWithoutProg) == 3 {
 		connectToNode(argsWithoutProg[2])
