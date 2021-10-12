@@ -83,6 +83,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	if err != nil {
 		if err == routing.ErrNotFound {
 			//Not found in the dht
+			return &pb.Value{Value: [][]byte{}}, nil
 		}
 
 		return nil, err
@@ -180,8 +181,33 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
-func (s *server) Del(_ context.Context, in *pb.Key) (*pb.Ack, error) {
+func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	log.Printf("Received: Del(%v)", in.GetKey())
+
+	key := string(in.GetKey())
+	//Delete in the DHT
+	value, err := kdht.GetValue(ctx, key)
+	if err != nil {
+		if err == routing.ErrNotFound {
+			// Not found in the dht
+			//Can return
+			return &pb.Ack{Msg: "Ok"}, nil
+		}
+
+		return &pb.Ack{Msg: "Err"}, err
+	}
+
+	remoteip := string(value)
+
+	//Found in the dht
+	if remoteip == string(ip) {
+		//Key present in this node
+		database.Del(in.GetKey())
+	} else {
+		//TODO contact remote server
+
+	}
+
 	database.Del(in.GetKey())
 	//TODO do delete
 	return &pb.Ack{Msg: "Ok"}, nil

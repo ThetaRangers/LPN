@@ -21,7 +21,10 @@ func (b BadgerDB) Get(key []byte) [][]byte {
 	err := b.Db.View(func(txn *badger.Txn) error {
 		var valCopy []byte
 		item, err := txn.Get(key)
-		handle(err)
+		if err != nil {
+			//Key not found
+			return nil
+		}
 
 		valCopy, err = item.ValueCopy(nil)
 

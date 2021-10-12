@@ -9,7 +9,11 @@ type GoCache struct {
 }
 
 func (g GoCache) Get(key []byte) [][]byte {
-	value, _ := g.Cache.Get(string(key))
+	value, err := g.Cache.Get(string(key))
+	if !err {
+		return [][]byte{}
+	}
+
 	bytes, ok := value.([][]byte)
 	if !ok {
 		return [][]byte{value.([]byte)}
