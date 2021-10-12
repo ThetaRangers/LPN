@@ -13,6 +13,7 @@ service Operations {
 
 message Key {
   bytes key = 1;
+  bool client = 2;
 }
 
 message Value {
@@ -22,6 +23,7 @@ message Value {
 message KeyValue {
   bytes key = 1;
   bytes value = 2;
+  bool client = 3;
 }
 
 message Ack {

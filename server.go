@@ -76,6 +76,9 @@ type server struct {
 }
 
 func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
+	if in.GetClient() {
+		log.Println("The message was sent by a client")
+	}
 	log.Printf("Received: Get(%v)", in.GetKey())
 	key := string(in.GetKey())
 	value, err := kdht.GetValue(ctx, key)
@@ -103,6 +106,9 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 }
 
 func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
+	if in.GetClient() {
+		log.Println("The message was sent by a client")
+	}
 	log.Printf("Received: Put(%v, %v)", in.GetKey(), in.GetValue())
 
 	key := string(in.GetKey())
@@ -144,6 +150,9 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 }
 
 func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
+	if in.GetClient() {
+		log.Println("The message was sent by a client")
+	}
 	log.Printf("Received: Append(%v, %v)", in.GetKey(), in.GetValue())
 	key := string(in.GetKey())
 	//Check where is stored
@@ -182,6 +191,9 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 }
 
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
+	if in.GetClient() {
+		log.Println("The message was sent by a client")
+	}
 	log.Printf("Received: Del(%v)", in.GetKey())
 
 	key := string(in.GetKey())

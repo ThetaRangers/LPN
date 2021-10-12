@@ -25,7 +25,7 @@ func main() {
 	// Contact the server and print out its response.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	r1, err := c.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("def")})
+	r1, err := c.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("def"), Client: true})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,22 +35,22 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
-	r1, err = c.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("ghi")})
+	r1, err = c.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("ghi"), Client: true})
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Append(\"abc\", \"ghi\"): %s", r1.GetMsg())
-	r2, err = c.Get(ctx, &pb.Key{Key: []byte("abc")})
+	r2, err = c.Get(ctx, &pb.Key{Key: []byte("abc"), Client: true})
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
-	r1, err = c.Del(ctx, &pb.Key{Key: []byte("abc")})
+	r1, err = c.Del(ctx, &pb.Key{Key: []byte("abc"), Client: true})
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Del(\"abc\"): %s", r1.GetMsg())
-	r2, err = c.Get(ctx, &pb.Key{Key: []byte("abc")})
+	r2, err = c.Get(ctx, &pb.Key{Key: []byte("abc"), Client: true})
 	if err != nil {
 		log.Fatal(err)
 	}
