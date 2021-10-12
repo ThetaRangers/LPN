@@ -1,4 +1,5 @@
 package cloud
+
 import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
@@ -7,25 +8,18 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"log"
-	"os"
 )
 
 type Item struct {
-	Key string
+	Key   string
 	Value []string
 }
 
-
-func exitErrorf(msg string/*, args ...interface{}*/) {
-	fmt.Fprintf(os.Stderr, msg+"\n")
-	os.Exit(1)
-}
-
-func SetupClient() *dynamodb.DynamoDB{
-	//TODO credentials as env variables
+func SetupClient(region string) *dynamodb.DynamoDB {
+	//Region taken from config
 	//start session
 	sess, _ := session.NewSession(&aws.Config{
-		Region: aws.String("us-east-1")},
+		Region: aws.String(region)},
 	)
 
 	//create S3 service client
@@ -34,7 +28,7 @@ func SetupClient() *dynamodb.DynamoDB{
 	return svc
 }
 
-func listTables(svc *dynamodb.DynamoDB){
+func listTables(svc *dynamodb.DynamoDB) {
 	// create the input configuration instance
 	input := &dynamodb.ListTablesInput{}
 
@@ -74,7 +68,7 @@ func listTables(svc *dynamodb.DynamoDB){
 }
 
 //key value table
-func createTable(svc *dynamodb.DynamoDB, tableName string ){
+func createTable(svc *dynamodb.DynamoDB, tableName string) {
 	input := &dynamodb.CreateTableInput{
 		AttributeDefinitions: []*dynamodb.AttributeDefinition{
 			{
@@ -104,7 +98,7 @@ func createTable(svc *dynamodb.DynamoDB, tableName string ){
 }
 
 //Override value for existing key
-func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value []string ){
+func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value []string) {
 	newItem := Item{key, value}
 	av, err := dynamodbattribute.MarshalMap(newItem)
 	if err != nil {
@@ -122,13 +116,13 @@ func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value []string ){
 	}
 
 	fmt.Print("Successfully added ( " + newItem.Key)
-	for i:=0; i< len(newItem.Value); i++  {
-		fmt.Print("'" + newItem.Value[i]+"' ")
+	for i := 0; i < len(newItem.Value); i++ {
+		fmt.Print("'" + newItem.Value[i] + "' ")
 	}
 	fmt.Println(") to table " + tableName)
 }
 
-func GetItem(svc *dynamodb.DynamoDB, tableName, key string) (Item, bool){
+func GetItem(svc *dynamodb.DynamoDB, tableName, key string) (Item, bool) {
 	result, err := svc.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -144,11 +138,9 @@ func GetItem(svc *dynamodb.DynamoDB, tableName, key string) (Item, bool){
 	item := Item{}
 
 	if result.Item == nil {
-		fmt.Println( "Could not find '" + key + "'")
+		fmt.Println("Could not find '" + key + "'")
 		return item, false
 	}
-
-
 
 	err = dynamodbattribute.UnmarshalMap(result.Item, &item)
 	if err != nil {
@@ -162,7 +154,7 @@ func GetItem(svc *dynamodb.DynamoDB, tableName, key string) (Item, bool){
 	return item, true
 }
 
-func DeleteItem(svc *dynamodb.DynamoDB, tableName, key string){
+func DeleteItem(svc *dynamodb.DynamoDB, tableName, key string) {
 	input := &dynamodb.DeleteItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"Key": {
@@ -180,7 +172,7 @@ func DeleteItem(svc *dynamodb.DynamoDB, tableName, key string){
 	fmt.Println("Deleted '" + key + " from table " + tableName)
 }
 
-func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues []string){
+func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues []string) {
 	item, ret := GetItem(svc, tableName, key)
 	if ret {
 		item.Value = append(item.Value, newValues...)
@@ -188,14 +180,14 @@ func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues []stri
 	}
 }
 
-
 /*func main(){
-	svc := SetupClient()
-	createTable(svc, "testTable")
-	listTables(svc)
-	PutItem(svc, "testTable", "put", []string{"g", "h", "i"})
-	GetItem(svc, "testTable", "put")
-	AppendValue(svc, "testTable", "put", []string{"l", "m", "n"})
+	//get region from Configuration
+	svc := SetupClient("us-east-1")
+	//createTable(svc, "testTable")
+	//listTables(svc)
+	//PutItem(svc, "testTable", "put", []string{"g", "h", "i"})
+	//GetItem(svc, "testTable", "put")
+	//AppendValue(svc, "testTable", "put", []string{"l", "m", "n"})
 	GetItem(svc, "testTable", "put")
 	DeleteItem(svc, "testTable", "put")
 

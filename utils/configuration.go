@@ -10,7 +10,8 @@ import (
 )
 
 type Configuration struct {
-	Database db.Database
+	Database  db.Database
+	awsRegion string
 }
 
 func GetConfiguration() Configuration {
@@ -26,7 +27,8 @@ func GetConfiguration() Configuration {
 	}(file)
 	decoder := json.NewDecoder(file)
 	parser := struct {
-		Database string
+		Database  string
+		AwsRegion string
 	}{}
 	err = decoder.Decode(&parser)
 	if err != nil {
@@ -46,5 +48,5 @@ func GetConfiguration() Configuration {
 		database = nil // TODO handle default
 	}
 
-	return Configuration{Database: database}
+	return Configuration{Database: database, awsRegion: parser.AwsRegion}
 }

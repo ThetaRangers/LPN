@@ -1,3 +1,4 @@
 {
-	"Database":"badger"
+	"Database":"badger",
+	"AwsRegion": "us-east-1"
 }
