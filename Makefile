@@ -7,7 +7,7 @@ proto:
 	operations/operations.proto
 
 executable:
-	go build server.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build server.go
 
 clean:
 	rm server

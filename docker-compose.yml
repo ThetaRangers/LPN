@@ -3,4 +3,6 @@ services:
   web:
     build: .
     ports:
-      - "50051:50051"
+      - "50052:50051"
+    environment:
+      - BOOTSTRAP_PEERS=/ip4/10.220.112.221/tcp/43351/p2p/QmZ8fctQdjwaiX1bMhcdFYjoeWDK1LMeM48YYQWs5Hcv3N

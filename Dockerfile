@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu
+FROM alpine
 
 EXPOSE 50051
 COPY server server
-#CMD ["./server"]
+COPY config.json config.json
+CMD ["./server"]

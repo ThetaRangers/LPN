@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
+	"os"
 	"strings"
 )
 
@@ -80,27 +81,24 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	value, err := kdht.GetValue(ctx, key)
 
 	if err != nil {
+		if err == routing.ErrNotFound {
+			//Not found in the dht
+		}
+
 		return nil, err
 	}
 
-	if len(value) == 0 {
-		//Not present
-		//TODO
+	remoteIp := string(value)
+	fmt.Println("Found at: ", remoteIp)
+
+	if remoteIp == string(ip) {
+		//Key present in this node
+		return &pb.Value{Value: database.Get(in.GetKey())}, nil
 	} else {
-		remoteip := string(value)
-		fmt.Println("Found at: ", remoteip)
-
-		if remoteip == string(ip) {
-			//Key present in this node
-			return &pb.Value{Value: database.Get(in.GetKey())}, nil
-		} else {
-			//TODO handle connections
-			//TODO handle failures
-			return &pb.Value{Value: database.Get(in.GetKey())}, nil
-		}
+		//TODO handle connections
+		//TODO handle failures
+		return &pb.Value{Value: database.Get(in.GetKey())}, nil
 	}
-
-	return &pb.Value{Value: database.Get(in.GetKey())}, nil
 }
 
 func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
@@ -111,38 +109,36 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	value, err := kdht.GetValue(ctx, key)
 	if err != nil {
 		if err == routing.ErrNotFound {
-			// TODO
+			// Not found in the dht
+			database.Put(in.GetKey(), in.GetValue())
+
+			//Set
+			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+
+			return &pb.Ack{Msg: "Ok"}, nil
 		}
-		return nil, err
+
+		return &pb.Ack{Msg: "Err"}, err
 	}
 
 	fmt.Println("Got value ", value)
 
-	if len(value) == 0 {
-		//Not found in the dht
-		//TODO handle cache
+	//Found in the dh
+	remoteip := string(value)
+	fmt.Println("Found at: ", remoteip)
 
+	if remoteip == string(ip) {
+		//Key present in this node
 		database.Put(in.GetKey(), in.GetValue())
-
-		//Set
-		err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
-		if err != nil {
-			return nil, err
-		}
 	} else {
-		//Found in the dh
-		remoteip := string(value)
-		fmt.Println("Found at: ", remoteip)
-
-		if remoteip == string(ip) {
-			//Key present in this node
-			database.Put(in.GetKey(), in.GetValue())
-		} else {
-			//TODO contact remote server
-		}
-
-		log.Printf("Found")
+		//TODO contact remote server
 	}
+
+	log.Printf("Found")
+
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
@@ -152,32 +148,35 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	//Check where is stored
 	value, err := kdht.GetValue(ctx, key)
 	if err != nil {
+		if err == routing.ErrNotFound {
+			//Not found in the dht
+			database.Put(in.GetKey(), in.GetValue())
+
+			//Set
+			//TODO
+			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
+			if err != nil {
+				return nil, err
+			}
+
+			return &pb.Ack{Msg: "Ok"}, nil
+		}
+
 		return nil, err
 	}
 
-	if len(value) == 0 {
-		//Not found in the dht
-		//TODO handle cache
-		database.Put(in.GetKey(), in.GetValue())
+	remoteip := string(value)
 
-		//Set
-		//TODO
-		err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
-		if err != nil {
-			return nil, err
-		}
+	//Found in the dht
+	if remoteip == string(ip) {
+		//Key present in this node
+		database.Append(in.GetKey(), in.GetValue())
 	} else {
-		remoteip := string(value)
-
-		//Found in the dht
-		if remoteip == string(ip) {
-			//Key present in this node
-			database.Append(in.GetKey(), in.GetValue())
-		} else {
-			//TODO contact remote server
-		}
-		log.Printf("Found")
+		//TODO contact remote server
 	}
+
+	log.Printf("Found")
+
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
@@ -188,7 +187,7 @@ func (s *server) Del(_ context.Context, in *pb.Key) (*pb.Ack, error) {
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
-func ContainsNetwork (mask string, ip net.IP) (bool, error) {
+func ContainsNetwork(mask string, ip net.IP) (bool, error) {
 	_, subnet, err := net.ParseCIDR(mask)
 	if err != nil {
 		return false, err
@@ -209,6 +208,11 @@ func main() {
 	}
 	s := grpc.NewServer()
 	pb.RegisterOperationsServer(s, &server{})
+
+	bootstrap := os.Getenv("BOOTSTRAP_PEERS")
+	if len(bootstrap) != 0 {
+		log.Println("Found bootstrapp peer at ", bootstrap)
+	}
 
 	//Get ip address
 	ifaces, err := net.Interfaces()
@@ -237,7 +241,15 @@ func main() {
 	// Joining the DHT
 	config := Config{}
 	flag.Int64Var(&config.Seed, "seed", 0, "Seed value for generating a PeerID, 0 is random")
-	flag.Var(&config.BootstrapPeers, "peer", "Peer multiaddress for peer discovery")
+
+	//For debugging
+	if len(bootstrap) == 0 {
+		flag.Var(&config.BootstrapPeers, "peer", "Peer multiaddress for peer discovery")
+	} else {
+		//addr, _ := multiaddr.NewMultiaddr(bootstrap)
+		config.BootstrapPeers.Set(bootstrap)
+	}
+
 	flag.IntVar(&config.Port, "port", 0, "")
 	flag.Parse()
 
