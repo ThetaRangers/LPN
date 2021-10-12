@@ -1,13 +1,13 @@
 # SDCC
 SDCC project
-##How to build
+## How to build
 In order to compile this program you need Go installed.
-###Executable
+### Executable
 The executable can be built with:
 ```sh
 make executable
 ```
-###Proto
+### Proto
 For this section you need protoc/protobuf installed.
 
 Install the protocol compiler plugins for Go using the following commands:
