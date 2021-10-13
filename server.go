@@ -20,7 +20,7 @@ import (
 
 const (
 	port = ":50051"
-	mask = "127.0.0.1/8"
+	mask = "172.17.0.0/24"
 )
 
 type Config struct {
@@ -57,6 +57,22 @@ func (nv NullValidator) Validate(key string, value []byte) error {
 	return nil
 }
 
+func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn) {
+	conn, err := grpc.Dial(ip, grpc.WithInsecure(), grpc.WithBlock())
+	if err != nil {
+		log.Fatalf("did not connect: %v", err)
+	}
+
+	c := pb.NewOperationsClient(conn)
+
+	// Contact the server and print out its response.
+	/*
+		_, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+	*/
+	return c, conn
+}
+
 // Select always selects the first record
 func (nv NullValidator) Select(key string, values [][]byte) (int, error) {
 	strs := make([]string, len(values))
@@ -70,15 +86,14 @@ func (nv NullValidator) Select(key string, values [][]byte) (int, error) {
 
 var database db.Database
 var ip net.IP
+var address string
 
 type server struct {
 	pb.UnimplementedOperationsServer
 }
 
 func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
-	if in.GetClient() {
-		log.Println("The message was sent by a client")
-	}
+	//Request from the client
 	log.Printf("Received: Get(%v)", in.GetKey())
 	key := string(in.GetKey())
 	value, err := kdht.GetValue(ctx, key)
@@ -88,63 +103,73 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 			//Not found in the dht
 			return &pb.Value{Value: [][]byte{}}, nil
 		}
-
 		return nil, err
 	}
 
 	remoteIp := string(value)
-	fmt.Println("Found at: ", remoteIp)
 
-	if remoteIp == string(ip) {
+	if remoteIp != address {
 		//Key present in this node
-		return &pb.Value{Value: database.Get(in.GetKey())}, nil
-	} else {
-		//TODO handle connections
 		//TODO handle failures
+		c, _ := ContactServer(remoteIp)
+
+		log.Println("CONTACTING REMOTE SERVER ", remoteIp, " I AM ", address)
+		result, err := c.Get(ctx, &pb.Key{Key: in.GetKey(), Client: false})
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return result, nil
+	} else {
 		return &pb.Value{Value: database.Get(in.GetKey())}, nil
 	}
 }
 
 func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	if in.GetClient() {
-		log.Println("The message was sent by a client")
-	}
-	log.Printf("Received: Put(%v, %v)", in.GetKey(), in.GetValue())
+		log.Printf("Received: client Put(%v, %v)", in.GetKey(), in.GetValue())
+		key := string(in.GetKey())
+		//Check where is stored
+		value, err := kdht.GetValue(ctx, key)
+		if err != nil {
+			if err == routing.ErrNotFound {
+				log.Println("Not found responsible node, putting in local db....")
+				// Not found in the dht
+				database.Put(in.GetKey(), in.GetValue())
 
-	key := string(in.GetKey())
-	//Check where is stored
-	value, err := kdht.GetValue(ctx, key)
-	if err != nil {
-		if err == routing.ErrNotFound {
-			// Not found in the dht
-			database.Put(in.GetKey(), in.GetValue())
+				//Set
+				err := kdht.PutValue(ctx, string(in.GetKey()), []byte(address))
+				if err != nil {
+					return &pb.Ack{Msg: "Err"}, err
+				}
 
-			//Set
-			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
+				return &pb.Ack{Msg: "Ok"}, nil
+			}
+
+			log.Println("ERROR")
+			return &pb.Ack{Msg: "Err"}, err
+		}
+
+		//Found in the dh
+		remoteIp := string(value)
+
+		if remoteIp != address {
+			//Key present in this node
+			log.Println("FOUND AT ", remoteIp, " CONNECTING...")
+			c, _ := ContactServer(remoteIp)
+			_, err := c.Put(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue(), Client: false})
 			if err != nil {
-				return &pb.Ack{Msg: "Err"}, err
+				return &pb.Ack{Msg: "Connection error"}, nil
 			}
 
 			return &pb.Ack{Msg: "Ok"}, nil
 		}
 
-		return &pb.Ack{Msg: "Err"}, err
 	}
 
-	fmt.Println("Got value ", value)
+	log.Printf("PUTTING IN LOCAL DB: %s:%s\n", string(in.GetKey()), string(in.GetValue()))
 
-	//Found in the dh
-	remoteip := string(value)
-	fmt.Println("Found at: ", remoteip)
-
-	if remoteip == string(ip) {
-		//Key present in this node
-		database.Put(in.GetKey(), in.GetValue())
-	} else {
-		//TODO contact remote server
-	}
-
-	log.Printf("Found")
+	database.Put(in.GetKey(), in.GetValue())
 
 	return &pb.Ack{Msg: "Ok"}, nil
 }
@@ -178,7 +203,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	remoteip := string(value)
 
 	//Found in the dht
-	if remoteip == string(ip) {
+	if remoteip == address {
 		//Key present in this node
 		database.Append(in.GetKey(), in.GetValue())
 	} else {
@@ -192,7 +217,9 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	if in.GetClient() {
-		log.Println("The message was sent by a client")
+		log.Println("Delete from client")
+	} else {
+		log.Println("Delete from server")
 	}
 	log.Printf("Received: Del(%v)", in.GetKey())
 
@@ -212,7 +239,7 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	remoteip := string(value)
 
 	//Found in the dht
-	if remoteip == string(ip) {
+	if remoteip == address {
 		//Key present in this node
 		database.Del(in.GetKey())
 	} else {
@@ -269,7 +296,9 @@ func main() {
 			if err != nil {
 				log.Panic(err)
 			}
+
 			if check {
+				address = fmt.Sprintf("%s%s", ip, port)
 				log.Printf("IP: %s", ip)
 				break
 			}
