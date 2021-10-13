@@ -63,25 +63,26 @@ func main() {
 	}
 	log.Printf("Get(\"abc\"): %s", r4.GetValue())
 
-	/*
-		r1, err = c.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("ghi"), Client: true})
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Append(\"abc\", \"ghi\"): %s", r1.GetMsg())
-		r2, err = c.Get(ctx, &pb.Key{Key: []byte("abc"), Client: true})
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Get(\"abc\"): %s", r2.GetValue())
-		r1, err = c.Del(ctx, &pb.Key{Key: []byte("abc"), Client: true})
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Del(\"abc\"): %s", r1.GetMsg())
-		r2, err = c.Get(ctx, &pb.Key{Key: []byte("abc"), Client: true})
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Get(\"abc\"): %s", r2.GetValue())*/
+	r1, err = c1.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("ghi"), Client: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Append(\"abc\", \"ghi\"): %s", r1.GetMsg())
+
+	r2, err = c2.Get(ctx, &pb.Key{Key: []byte("abc"), Client: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Get(\"abc\"): %s", r2.GetValue())
+
+	r1, err = c2.Del(ctx, &pb.Key{Key: []byte("abc"), Client: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Del(\"abc\"): %s", r1.GetMsg())
+	r2, err = c1.Get(ctx, &pb.Key{Key: []byte("abc"), Client: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Get(\"abc\"): %s", r2.GetValue())
 }

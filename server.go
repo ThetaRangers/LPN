@@ -113,7 +113,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		//TODO handle failures
 		c, _ := ContactServer(remoteIp)
 
-		log.Println("CONTACTING REMOTE SERVER ", remoteIp, " I AM ", address)
+		log.Println("Found key at  ", remoteIp, " connecting...")
 		result, err := c.Get(ctx, &pb.Key{Key: in.GetKey(), Client: false})
 		if err != nil {
 			log.Fatal(err)
@@ -155,7 +155,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 
 		if remoteIp != address {
 			//Key present in this node
-			log.Println("FOUND AT ", remoteIp, " CONNECTING...")
+			log.Println("Found key at  ", remoteIp, " connecting...")
 			c, _ := ContactServer(remoteIp)
 			_, err := c.Put(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue(), Client: false})
 			if err != nil {
@@ -175,79 +175,82 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 }
 
 func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
-	if in.GetClient() {
-		log.Println("The message was sent by a client")
-	}
-	log.Printf("Received: Append(%v, %v)", in.GetKey(), in.GetValue())
 	key := string(in.GetKey())
-	//Check where is stored
-	value, err := kdht.GetValue(ctx, key)
-	if err != nil {
-		if err == routing.ErrNotFound {
-			//Not found in the dht
-			database.Put(in.GetKey(), in.GetValue())
 
-			//Set
-			//TODO
-			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
-			if err != nil {
-				return nil, err
+	if in.GetClient() {
+		//Check where is stored
+		value, err := kdht.GetValue(ctx, key)
+
+		if err != nil {
+			if err == routing.ErrNotFound {
+				//Not found in the dht
+				database.Put(in.GetKey(), in.GetValue())
+
+				//Set
+				err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
+				if err != nil {
+					return nil, err
+				}
+
+				return &pb.Ack{Msg: "Ok"}, nil
 			}
 
-			return &pb.Ack{Msg: "Ok"}, nil
+			return nil, err
 		}
 
-		return nil, err
+		remoteIp := string(value)
+
+		//Found in the dht
+		if remoteIp != address {
+			//Connect to remote ip
+			log.Println("Found key at  ", remoteIp, " connecting...")
+			c, _ := ContactServer(remoteIp)
+			_, err := c.Append(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue(), Client: false})
+			if err != nil {
+				return &pb.Ack{Msg: "Connection error"}, nil
+			}
+		}
 	}
 
-	remoteip := string(value)
-
-	//Found in the dht
-	if remoteip == address {
-		//Key present in this node
-		database.Append(in.GetKey(), in.GetValue())
-	} else {
-		//TODO contact remote server
-	}
-
-	log.Printf("Found")
-
+	database.Append(in.GetKey(), in.GetValue())
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
-	if in.GetClient() {
-		log.Println("Delete from client")
-	} else {
-		log.Println("Delete from server")
-	}
-	log.Printf("Received: Del(%v)", in.GetKey())
-
 	key := string(in.GetKey())
-	//Delete in the DHT
-	value, err := kdht.GetValue(ctx, key)
-	if err != nil {
-		if err == routing.ErrNotFound {
-			// Not found in the dht
-			//Can return
-			return &pb.Ack{Msg: "Ok"}, nil
+
+	if in.GetClient() {
+		//Delete in the DHT
+		value, err := kdht.GetValue(ctx, key)
+		if err != nil {
+			if err == routing.ErrNotFound {
+				// Not found in the dht
+				//Can return
+				return &pb.Ack{Msg: "Ok"}, nil
+			}
+
+			return &pb.Ack{Msg: "Err"}, err
 		}
 
-		return &pb.Ack{Msg: "Err"}, err
-	}
+		remoteIp := string(value)
 
-	remoteip := string(value)
-
-	//Found in the dht
-	if remoteip == address {
-		//Key present in this node
-		database.Del(in.GetKey())
-	} else {
-		//TODO contact remote server
-
+		//Found in the dht
+		if remoteIp != address {
+			log.Println("Found key at  ", remoteIp, " connecting...")
+			c, _ := ContactServer(remoteIp)
+			_, err := c.Del(ctx, &pb.Key{Key: []byte("abc"), Client: false})
+			if err != nil {
+				return &pb.Ack{Msg: "Connection error"}, nil
+			}
+		}
 	}
 
 	database.Del(in.GetKey())
+
+	err := kdht.PutValue(ctx, key, []byte(""))
+	if err != nil {
+		return nil, err
+	}
 	//TODO do delete
 	return &pb.Ack{Msg: "Ok"}, nil
 }
