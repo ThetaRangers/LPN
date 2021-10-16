@@ -27,3 +27,15 @@ The following command generates both protobuf code and server executable:
 ```sh
 make all
 ```
+The following command generates the docker image:
+```sh
+make docker
+```
+Then you can run the application on a container with:
+```sh
+docker run -it app
+```
+And the you can run the other containers with:
+```sh
+docker run -e BOOTSTRAP_PEERS=<address> -it app
+```
