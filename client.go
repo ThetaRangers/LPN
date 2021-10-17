@@ -11,7 +11,7 @@ import (
 
 const (
 	serverAddress1 = "172.17.0.3:50051"
-	serverAddress2 = "172.17.0.2:50051"
+	serverAddress2 = "172.17.0.3:50051"
 )
 
 func main() {
@@ -40,8 +40,6 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("Put(\"abc\", \"defa\"): %s", r1.GetMsg())
-
-	time.Sleep(1000)
 
 	r2, err := c2.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {

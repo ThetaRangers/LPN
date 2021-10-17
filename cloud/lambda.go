@@ -1,0 +1,57 @@
+package cloud
+
+import (
+	"encoding/json"
+	_ "encoding/json"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/lambda"
+	"github.com/opentracing/opentracing-go/log"
+	_ "strconv"
+	"strings"
+)
+
+type RequestNetwork struct {
+	Ip      string `json:"ip"`
+	Network string `json:"network"`
+	N       int    `json:"n"`
+}
+
+func setupClient(region string) *lambda.Lambda {
+	//Region taken from config
+	//start session
+	sess, _ := session.NewSession(&aws.Config{
+		Region: aws.String(region)},
+	)
+
+	//create S3 service client
+	svc := lambda.New(sess)
+
+	return svc
+}
+
+func RegisterToTheNetwork(ip, network string, n int, region string) []string {
+	client := setupClient("us-east-1")
+
+	x := RequestNetwork{Ip: ip, Network: network, N: n}
+
+	payload, err := json.Marshal(&x)
+	if err != nil {
+		log.Error(err)
+	}
+
+	//TODO change name of the lambda function
+	result, err := client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("testDynamo"), Payload: payload})
+	if err != nil {
+		log.Error(err)
+	}
+
+	res := strings.Replace(string(result.Payload[1:len(result.Payload)-1]), "\\", "", -1)
+
+	var dat map[string][]string
+	if err := json.Unmarshal([]byte(res), &dat); err != nil {
+		panic(err)
+	}
+
+	return dat["results"]
+}

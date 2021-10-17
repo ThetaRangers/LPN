@@ -12,7 +12,7 @@ def lambda_handler(event, context):
     '''
     ip = event['ip']
     n = event['n']
-    bootstrap = event['bootstrap']
+    #bootstrap = event['bootstrap']
 
     if 'network' in event:
         dynamo = boto3.resource('dynamodb').Table(event['network'])
@@ -54,4 +54,4 @@ def lambda_handler(event, context):
         }
     )
 
-    return json.dumps(result)
+    return json.dumps({"results" : result})

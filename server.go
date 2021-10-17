@@ -16,11 +16,13 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
 	port = ":50051"
 	mask = "172.17.0.0/24"
+	n    = 2 //Replication nodes
 )
 
 type Config struct {
@@ -31,6 +33,8 @@ type Config struct {
 }
 
 type addrList []multiaddr.Multiaddr
+
+var neighbours []string
 
 func (al *addrList) String() string {
 	strs := make([]string, len(*al))
@@ -95,6 +99,7 @@ type server struct {
 func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	//Request from the client
 	log.Printf("Received: Get(%v)", in.GetKey())
+
 	key := string(in.GetKey())
 	value, err := kdht.GetValue(ctx, key)
 
@@ -146,7 +151,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 				return &pb.Ack{Msg: "Ok"}, nil
 			}
 
-			log.Println("ERROR")
+			log.Println("Error in put")
 			return &pb.Ack{Msg: "Err"}, err
 		}
 
@@ -263,8 +268,84 @@ func ContainsNetwork(mask string, ip net.IP) (bool, error) {
 	return subnet.Contains(ip), err
 }
 
+func getIpFromPeerAddr(peers []multiaddr.Multiaddr) string {
+
+	var parts []string
+	for i := 0; i < len(peers); i++ {
+		parts = strings.Split(peers[i].String(), "/")
+		ipString := parts[2]
+		//TODO CHANGE
+		if !strings.Contains(ipString, "127.0.0") {
+			return parts[2]
+		}
+		//ipres, _, _ := net.ParseCIDR(parts[2])
+		/*res, _ := ContainsNetwork(mask, ipres)
+		 if res {
+			 return parts[2]
+		 }*/
+	}
+
+	return parts[2]
+}
+
 func init() {
 	database = utils.GetConfiguration().Database
+}
+
+func find(slice []string, val string) (int, bool) {
+	for i, item := range slice {
+		if item == val {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
+func sliceDiff(sl1, sl2 []string) []string {
+	//sl1 items not contained in sl2
+	var diff []string
+	for _, ip := range sl1 {
+		_, found := find(sl2, ip)
+		if !found {
+			diff = append(diff, ip)
+		}
+	}
+	return diff
+}
+
+func neighboursPeers(ctx context.Context, nodeId string) {
+
+	for true {
+		//Find neighbours
+		newNeighbours := make([]string, 0)
+		peers, _ := kdht.GetClosestPeers(ctx, nodeId)
+		fmt.Println(kdht.RoutingTable().ListPeers())
+		if len(peers) > 0 {
+			for i := 0; i < len(peers); i++ {
+				val, _ := kdht.FindPeer(ctx, peers[i])
+
+				peerIp := getIpFromPeerAddr(val.Addrs)
+				newNeighbours = append(newNeighbours, peerIp)
+				//newNeighbours[i] = peerIpr
+			}
+		}
+		/*fmt.Println("Old", neighbours)
+
+		sort.Strings(newNeighbours)
+		fmt.Println("New", newNeighbours)*/
+
+		//Find difference in the neighbours
+		newPeers := sliceDiff(neighbours, newNeighbours)
+		oldPeers := sliceDiff(newNeighbours, neighbours)
+
+		fmt.Println("old neighbours ", neighbours)
+		fmt.Println("new neighbours ", newNeighbours)
+
+		fmt.Println("new peers ", newPeers)
+		fmt.Println("old peers ", oldPeers)
+
+		time.Sleep(5 * time.Second)
+	}
 }
 
 var kdht *dht.IpfsDHT
@@ -276,6 +357,8 @@ func main() {
 	}
 	s := grpc.NewServer()
 	pb.RegisterOperationsServer(s, &server{})
+
+	neighbours = make([]string, n)
 
 	bootstrap := os.Getenv("BOOTSTRAP_PEERS")
 	if len(bootstrap) != 0 {
@@ -338,6 +421,9 @@ func main() {
 
 	kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
 	kdht.Validator = NullValidator{}
+
+	go neighboursPeers(ctx, h.ID().Pretty())
+
 	if err != nil {
 		log.Fatal(err)
 	}
