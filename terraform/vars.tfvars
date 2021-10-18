@@ -1,0 +1,6 @@
+function_name = "registryService"
+s3_bucket = "sdccc"
+s3_key = "lambda.zip"
+handler = "lambda.lambda_handler"
+dynamo_table_name = "Storage"
+dynamo_table_name1 = "tabellone"

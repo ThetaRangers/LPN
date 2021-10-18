@@ -3,6 +3,7 @@ package cloud
 import (
 	"encoding/json"
 	_ "encoding/json"
+	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lambda"
@@ -24,7 +25,7 @@ func setupClient(region string) *lambda.Lambda {
 		Region: aws.String(region)},
 	)
 
-	//create S3 service client
+	//create lambda service client
 	svc := lambda.New(sess)
 
 	return svc
@@ -41,11 +42,12 @@ func RegisterToTheNetwork(ip, network string, n int, region string) []string {
 	}
 
 	//TODO change name of the lambda function
-	result, err := client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("testDynamo"), Payload: payload})
+	result, err := client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("registryService"), Payload: payload})
 	if err != nil {
 		log.Error(err)
 	}
 
+	fmt.Println(string(result.Payload))
 	res := strings.Replace(string(result.Payload[1:len(result.Payload)-1]), "\\", "", -1)
 
 	var dat map[string][]string
@@ -54,4 +56,10 @@ func RegisterToTheNetwork(ip, network string, n int, region string) []string {
 	}
 
 	return dat["results"]
+
+}
+
+func main() {
+
+	fmt.Println(RegisterToTheNetwork("test", "tabellone", 2, "us-east-1"))
 }

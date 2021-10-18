@@ -22,7 +22,7 @@ func SetupClient(region string) *dynamodb.DynamoDB {
 		Region: aws.String(region)},
 	)
 
-	//create S3 service client
+	//create dynamo service client
 	svc := dynamodb.New(sess)
 
 	return svc
@@ -180,15 +180,16 @@ func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues []stri
 	}
 }
 
-/*func main(){
+func main() {
+	tableName := "tabellone"
 	//get region from Configuration
 	svc := SetupClient("us-east-1")
 	//createTable(svc, "testTable")
 	//listTables(svc)
-	//PutItem(svc, "testTable", "put", []string{"g", "h", "i"})
-	//GetItem(svc, "testTable", "put")
-	//AppendValue(svc, "testTable", "put", []string{"l", "m", "n"})
-	GetItem(svc, "testTable", "put")
-	DeleteItem(svc, "testTable", "put")
+	PutItem(svc, tableName, "put", []string{"g", "h", "i"})
+	//GetItem(svc, tableName, "put")
+	//AppendValue(svc, tableName, "put", []string{"l", "m", "n"})
+	GetItem(svc, tableName, "put")
+	//DeleteItem(svc, tableName, "put")
 
-}*/
+}
