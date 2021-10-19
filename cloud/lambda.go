@@ -32,7 +32,7 @@ func setupClient(region string) *lambda.Lambda {
 }
 
 func RegisterToTheNetwork(ip, network string, n int, region string) []string {
-	client := setupClient("us-east-1")
+	client := setupClient(region)
 
 	x := RequestNetwork{Ip: ip, Network: network, N: n}
 
@@ -61,5 +61,5 @@ func RegisterToTheNetwork(ip, network string, n int, region string) []string {
 
 func main() {
 
-	fmt.Println(RegisterToTheNetwork("test", "tabellone", 2, "us-east-1"))
+	fmt.Println(RegisterToTheNetwork("test12", "tabellone", 2, "us-east-1"))
 }

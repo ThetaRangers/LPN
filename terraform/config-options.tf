@@ -2,11 +2,7 @@ variable "function_name"{
 	type = string
 }
 
-variable "s3_bucket" {
-	type = string
-}
-
-variable "s3_key" {
+variable "lambda_zip" {
 	type = string
 }
 

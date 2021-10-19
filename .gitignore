@@ -24,3 +24,9 @@ badgerDB/
 server
 client
 
+# Terraform output
+terraform/.terraform*
+terraform/*.zip
+terraform/terraform.tfstate*
+tfdestroy
+tfplan

@@ -12,9 +12,7 @@ provider "aws" {
 
 resource "aws_lambda_function" "replicaSet" {
    function_name = var.function_name
-
-   s3_bucket = var.s3_bucket
-   s3_key    = var.s3_key
+   filename      = var.lambda_zip
 
    # "lambda_sqs_consumer" is the filename within the zip file and "my_handler"
    # is the name of the handler function
