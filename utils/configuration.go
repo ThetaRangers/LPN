@@ -44,6 +44,8 @@ func GetConfiguration() Configuration {
 		database = db.BadgerDB{Db: badgerDB}
 	} else if parser.Database == "go-cache" {
 		database = db.GoCache{Cache: cache.New(cache.NoExpiration, 0)}
+	} else if parser.Database == "redis" {
+		database = db.RedisDB{Db: db.ConnectToRedis()}
 	} else {
 		database = nil // TODO handle default
 	}

@@ -1,5 +1,5 @@
 {
-	"Database":"badger",
+	"Database":"redis",
 	"AwsRegion": "us-east-1",
 	"ReplicationFactor": "3"
 }
