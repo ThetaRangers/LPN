@@ -30,7 +30,7 @@ func (r RedisDB) Get(key []byte) ([][]byte, uint64) {
 	return slice[1:], binary.BigEndian.Uint64(slice[0])
 }
 
-func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) {
+func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) uint64 {
 	ctx := context.Background()
 	var versionNum uint64
 
@@ -74,9 +74,11 @@ func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	return versionNum
 }
 
-func (r RedisDB) Append(key, value []byte) {
+func (r RedisDB) Append(key, value []byte) ([][]byte, uint64) {
 	ctx := context.Background()
 	var slice [][]byte
 	var versionNumber uint64
@@ -116,6 +118,8 @@ func (r RedisDB) Append(key, value []byte) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	return slice[1:], versionNumber
 }
 
 func (r RedisDB) Del(key []byte) {

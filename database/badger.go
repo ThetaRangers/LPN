@@ -41,9 +41,9 @@ func (b BadgerDB) Get(key []byte) ([][]byte, uint64) {
 	return slice[1:], binary.BigEndian.Uint64(slice[0])
 }
 
-func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) {
+func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) uint64 {
+	var versionNum uint64
 	err := b.Db.Update(func(txn *badger.Txn) error {
-		var versionNum uint64
 		if len(version) != 1 {
 			var value [][]byte
 			value, versionNum = b.Get(key)
@@ -73,9 +73,11 @@ func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	return versionNum
 }
 
-func (b BadgerDB) Append(key, value []byte) {
+func (b BadgerDB) Append(key, value []byte) ([][]byte, uint64) {
 	var versionNumber uint64
 	var valCopy []byte
 	var buffer []byte
@@ -122,6 +124,8 @@ func (b BadgerDB) Append(key, value []byte) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	return slice[1:], versionNumber
 }
 
 func (b BadgerDB) Del(key []byte) {

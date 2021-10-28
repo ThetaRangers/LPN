@@ -200,6 +200,29 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	}
 }
 
+func propagatePut(ctx context.Context, key []byte, value [][]byte, version uint64) {
+	channel := make(chan bool)
+	for i := 0; i < utils.Replicas; i++ {
+		// Replicate as goroutine
+		replicaAddr := replicaSet[i]
+
+		go func() {
+			callReplicate(ctx, replicaAddr, key, value, version)
+			channel <- true
+		}()
+	}
+	go func() {
+		time.Sleep(utils.Timeout)
+		channel <- false
+	}()
+	for i := 0; i < utils.WriteQuorum; i++ {
+		done := <-channel
+		if !done {
+			// Timeout
+		}
+	}
+}
+
 // Put rpc function called to store a value on the responsible node. If no responsible node is found, the current node
 // becomes the responsible.
 func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
@@ -216,24 +239,10 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			log.Println("Not found responsible node, putting in local db....")
 			// Not found in the dht
 			dbInput = append(dbInput, in.GetValue())
-			database.Put(in.GetKey(), dbInput)
-			channel := make(chan bool)
-			for i := 0; i < utils.Replicas; i++ {
-				// Replicate as goroutine
-				go func() {
-					channel <- true
-				}()
-			}
-			go func() {
-				time.Sleep(utils.Timeout)
-				channel <- false
-			}()
-			for i := 0; i < utils.WriteQuorum; i++ {
-				done := <-channel
-				if !done {
-					// Timeout
-				}
-			}
+			ver := database.Put(in.GetKey(), dbInput)
+
+			propagatePut(ctx, in.GetKey(), dbInput, ver)
+
 			//Set
 			err := kdht.PutValue(ctxDht, string(in.GetKey()), []byte(address))
 			if err != nil {
@@ -269,7 +278,8 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	}
 
 	dbInput = append(dbInput, in.GetValue())
-	database.Put(in.GetKey(), dbInput)
+	ver := database.Put(in.GetKey(), dbInput)
+	propagatePut(ctx, in.GetKey(), dbInput, ver)
 
 	return &pb.Ack{Msg: "Ok"}, nil
 }
@@ -287,7 +297,8 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			//Not found in the dht
 
 			dbInput = append(dbInput, in.GetValue())
-			database.Put(in.GetKey(), dbInput)
+			version := database.Put(in.GetKey(), dbInput)
+			propagatePut(ctx, in.GetKey(), dbInput, version)
 
 			//Set
 			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
@@ -296,8 +307,6 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			}
 
 			return &pb.Ack{Msg: "Ok"}, nil
-		} else {
-			<-kdht.ForceRefresh()
 		}
 
 		return nil, err
@@ -316,7 +325,9 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		}
 	}
 
-	database.Append(in.GetKey(), in.GetValue())
+	dbRes, versions := database.Append(in.GetKey(), in.GetValue())
+	propagatePut(ctx, in.GetKey(), dbRes, versions)
+
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
@@ -334,10 +345,7 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		}
 
 		return &pb.Ack{Msg: "Err"}, err
-	} else {
-		<-kdht.ForceRefresh()
 	}
-
 	remoteIp := string(value)
 
 	//Found in the dht
@@ -361,18 +369,21 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 }
 
 func (s *server) Replicate(ctx context.Context, in *pb.KeyValueVersion) (*pb.Ack, error) {
+	log.Println("RECEIVED REPLICATE REQUEST")
 	database.Put(in.GetKey(), in.GetValue(), in.GetVersion())
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
 func callReplicate(ctx context.Context, ip string, key []byte, value [][]byte, version uint64) {
-	c, _, _ := ContactServer(ip)
+	address := ip + ":50051"
+	c, _, _ := ContactServer(address)
 	ack, err := c.Replicate(ctx, &pb.KeyValueVersion{Key: key, Value: value, Version: version})
 	if err != nil {
 		return
 	}
 	if ack.GetMsg() != "Ok" {
 		// TODO
+		log.Println("Ack Not OK")
 	}
 }
 
@@ -392,9 +403,9 @@ var kdht *dht.IpfsDHT
 
 func main() {
 	//Get ip address
-	ifaces, err := net.Interfaces()
+	iFaces, err := net.Interfaces()
 	// handle err
-	for _, i := range ifaces {
+	for _, i := range iFaces {
 		addrs, _ := i.Addrs()
 		// handle err
 		for _, addr := range addrs {
