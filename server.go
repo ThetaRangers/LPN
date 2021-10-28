@@ -206,6 +206,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	log.Printf("Received: client Put(%v, %v)", in.GetKey(), in.GetValue())
 
 	ctxDht := context.Background()
+	var dbInput [][]byte
 
 	key := string(in.GetKey())
 	//Check where is stored
@@ -214,11 +215,14 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		if err == routing.ErrNotFound {
 			log.Println("Not found responsible node, putting in local db....")
 			// Not found in the dht
-			database.Put(in.GetKey(), in.GetValue())
+			dbInput = append(dbInput, in.GetValue())
+			database.Put(in.GetKey(), dbInput)
 			channel := make(chan bool)
 			for i := 0; i < utils.Replicas; i++ {
 				// Replicate as goroutine
-				go func() {}()
+				go func() {
+					channel <- true
+				}()
 			}
 			go func() {
 				time.Sleep(utils.Timeout)
@@ -240,14 +244,6 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		} else {
 			return &pb.Ack{Msg: "Err"}, err
 		}
-		/*else {
-			log.Println("ERROR KDHT", err)
-			kdht.ForceRefresh()
-
-			return &pb.Ack{Msg: "Retry"}, nil
-		}
-		return &pb.Ack{Msg: "Err"}, err
-		*/
 	}
 
 	//Found in the dht
@@ -272,7 +268,8 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		return &pb.Ack{Msg: "Ok"}, nil
 	}
 
-	database.Put(in.GetKey(), in.GetValue())
+	dbInput = append(dbInput, in.GetValue())
+	database.Put(in.GetKey(), dbInput)
 
 	return &pb.Ack{Msg: "Ok"}, nil
 }
@@ -283,11 +280,14 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 
 	//Check where is stored
 	value, err := kdht.GetValue(ctx, key)
+	var dbInput [][]byte
 
 	if err != nil {
 		if err == routing.ErrNotFound {
 			//Not found in the dht
-			database.Put(in.GetKey(), in.GetValue())
+
+			dbInput = append(dbInput, in.GetValue())
+			database.Put(in.GetKey(), dbInput)
 
 			//Set
 			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
@@ -320,7 +320,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
-// Del
+// Del function to delete
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	key := string(in.GetKey())
 
