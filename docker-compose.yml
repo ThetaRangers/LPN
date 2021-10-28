@@ -1,8 +1,22 @@
 version: "3.9"
 services:
-  web:
-    build: .
-    ports:
-      - "50052:50051"
+  app1:
+    image: app
+    network_mode: bridge
     environment:
-      - BOOTSTRAP_PEERS=/ip4/10.220.112.221/tcp/43351/p2p/QmZ8fctQdjwaiX1bMhcdFYjoeWDK1LMeM48YYQWs5Hcv3N
+      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+  app2:
+    image: app
+    network_mode: bridge
+    environment:
+      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+  app3:
+    image: app
+    network_mode: bridge
+    environment:
+      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+  app4:
+    image: app
+    network_mode: bridge
+    environment:
+      - BOOTSTRAP_PEERS=${BOOTSTRAP}
