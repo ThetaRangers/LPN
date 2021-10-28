@@ -4,7 +4,6 @@ import (
 	db "SDCC/database"
 	"encoding/json"
 	"github.com/dgraph-io/badger"
-	"github.com/patrickmn/go-cache"
 	"log"
 	"os"
 	"time"
@@ -13,10 +12,10 @@ import (
 const (
 	AwsRegion   = "us-east-1"
 	Replicas    = 4
-	N = Replicas + 1
-	WriteQuorum = N / 2 + 1
+	N           = Replicas + 1
+	WriteQuorum = N/2 + 1
 	ReadQuorum  = N / 2
-	Timeout 	= 5 * time.Second
+	Timeout     = 5 * time.Second
 )
 
 type Configuration struct {
@@ -52,13 +51,14 @@ func GetConfiguration() Configuration {
 			log.Fatal(err)
 		}
 		database = db.BadgerDB{Db: badgerDB}
-	} else if parser.Database == "go-cache" {
-		database = db.GoCache{Cache: cache.New(cache.NoExpiration, 0)}
 	} else if parser.Database == "redis" {
 		database = db.RedisDB{Db: db.ConnectToRedis()}
 	} else {
 		database = nil // TODO handle default
 	}
+	/*else if parser.Database == "go-cache" {
+		database = db.GoCache{Cache: cache.New(cache.NoExpiration, 0)}
+	}*/
 
 	return Configuration{Database: database, awsRegion: parser.AwsRegion}
 }

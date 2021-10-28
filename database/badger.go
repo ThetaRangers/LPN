@@ -41,7 +41,7 @@ func (b BadgerDB) Get(key []byte) ([][]byte, uint64) {
 	return slice[1:], binary.BigEndian.Uint64(slice[0])
 }
 
-func (b BadgerDB) Put(key, value []byte) {
+func (b BadgerDB) Put(key, value []byte, version ...uint64) {
 	err := b.Db.Update(func(txn *badger.Txn) error {
 		var versionNum uint64
 		if len(version) != 1 {
