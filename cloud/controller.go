@@ -179,17 +179,3 @@ func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues []stri
 		PutItem(svc, tableName, key, item.Value)
 	}
 }
-
-func main() {
-	tableName := "tabellone"
-	//get region from Configuration
-	svc := SetupClient("us-east-1")
-	//createTable(svc, "testTable")
-	//listTables(svc)
-	PutItem(svc, tableName, "put", []string{"g", "h", "i"})
-	//GetItem(svc, tableName, "put")
-	//AppendValue(svc, tableName, "put", []string{"l", "m", "n"})
-	GetItem(svc, tableName, "put")
-	//DeleteItem(svc, tableName, "put")
-
-}

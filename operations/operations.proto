@@ -9,11 +9,15 @@ service Operations {
   rpc Put (KeyValue) returns (Ack) {}
   rpc Append (KeyValue) returns (Ack) {}
   rpc Del (Key) returns (Ack) {}
+  rpc GetInternal (Key) returns (Value) {}
+  rpc PutInternal (KeyValue) returns (Ack) {}
+  rpc AppendInternal (KeyValue) returns (Ack) {}
+  rpc DelInternal (Key) returns (Ack) {}
+  rpc Replicate (KeyValueVersion) returns (Ack) {}
 }
 
 message Key {
   bytes key = 1;
-  bool client = 2;
 }
 
 message Value {
@@ -23,7 +27,12 @@ message Value {
 message KeyValue {
   bytes key = 1;
   bytes value = 2;
-  bool client = 3;
+}
+
+message KeyValueVersion {
+  bytes key = 1;
+  repeated bytes value = 2;
+  uint64 version = 3;
 }
 
 message Ack {

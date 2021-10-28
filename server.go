@@ -1,6 +1,7 @@
 package main
 
 import (
+	"SDCC/cloud"
 	db "SDCC/database"
 	"SDCC/ipfs"
 	pb "SDCC/operations"
@@ -16,6 +17,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
@@ -30,7 +32,17 @@ type Config struct {
 	TestMode       bool
 }
 
+type server struct {
+	pb.UnimplementedOperationsServer
+}
+
 type addrList []multiaddr.Multiaddr
+
+var replicaSet []string
+
+var database db.Database
+var ip net.IP
+var address string
 
 func (al *addrList) String() string {
 	strs := make([]string, len(*al))
@@ -52,163 +64,255 @@ func (al *addrList) Set(value string) error {
 type NullValidator struct{}
 
 // Validate always returns success
-func (nv NullValidator) Validate(key string, value []byte) error {
-	log.Printf("NullValidator Validate: %s - %s", key, string(value))
+func (nv NullValidator) Validate(string, []byte) error {
+	//log.Printf("NullValidator Validate: %s - %s", key, string(value))
 	return nil
 }
 
-func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn) {
-	conn, err := grpc.Dial(ip, grpc.WithInsecure(), grpc.WithBlock())
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-
-	c := pb.NewOperationsClient(conn)
-
-	// Contact the server and print out its response.
-	/*
-		_, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-	*/
-	return c, conn
-}
-
 // Select always selects the first record
-func (nv NullValidator) Select(key string, values [][]byte) (int, error) {
-	strs := make([]string, len(values))
-	for i := 0; i < len(values); i++ {
-		strs[i] = string(values[i])
-	}
-	log.Printf("NullValidator Select: %s - %v", key, strs)
+func (nv NullValidator) Select(string, [][]byte) (int, error) {
+	/*
+		strs := make([]string, len(values))
+		for i := 0; i < len(values); i++ {
+			strs[i] = string(values[i])
+		}
+		log.Printf("NullValidator Select: %s - %v", key, strs)
+	*/
 
 	return 0, nil
 }
 
-var database db.Database
-var ip net.IP
-var address string
-
-type server struct {
-	pb.UnimplementedOperationsServer
+func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
+	conn, err := grpc.Dial(ip, grpc.WithInsecure())
+	if err != nil {
+		return nil, nil, err
+	}
+	c := pb.NewOperationsClient(conn)
+	return c, conn, nil
 }
+
+/*
+ * La get anche se riguarda una replica, chiede il valore al master, così avviene una riconciliazione del valore
+ */
+
+// Get rpc function called to retrieve a value, if the value is not found in the local DB, the responsible node is
+// searched on the DHT and queried. If no node can be found an empty value is returned with no error. If an error
+// occurred an empty value is returned with the error. If the value is correctly found, it is returned with no error
+/* func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
+	//Request from the client
+	log.Printf("Received: Get(%v)", in.GetKey())
+	key := string(in.GetKey())
+	value, err := kdht.GetValue(ctx, key)
+	if err != nil {
+		if err == routing.ErrNotFound {
+			//Not found in the dht
+			return &pb.Value{Value: [][]byte{}}, nil
+		} else {
+			return &pb.Value{Value: [][]byte{}}, err
+		}
+	}
+
+	remoteIp := string(value) // TODO list values
+	// bool replica = list.contains(me)
+
+	if remoteIp != address {
+		// Try node list
+		//i := 0
+		c, _, err := ContactServer(remoteIp)
+		if err != nil {
+			for {
+				if replica {
+					nuove elezioni
+				} else {
+					i++
+					remoteIp = remoteIp[i]
+					c, _, err := ContactServer(remoteIp)
+			}
+		}
+
+
+		for {
+			//if i > list.size() break;
+			//TODO skip to next one in the list
+			c, _, err := ContactServer(remoteIp)
+			log.Println("Get ContactServer failure", err)
+			if err != nil {
+				// i++
+				continue
+			}
+
+			result, err := c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
+			if err != nil {
+				// i++
+				continue
+			}
+			return result, nil
+		}
+		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
+
+	} else {
+		return &pb.Value{Value: database.Get(in.GetKey())}, nil
+	}
+} */
 
 func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	//Request from the client
 	log.Printf("Received: Get(%v)", in.GetKey())
 	key := string(in.GetKey())
 	value, err := kdht.GetValue(ctx, key)
-
 	if err != nil {
 		if err == routing.ErrNotFound {
 			//Not found in the dht
 			return &pb.Value{Value: [][]byte{}}, nil
+		} else {
+			return &pb.Value{Value: [][]byte{}}, err
 		}
-		return nil, err
 	}
 
-	remoteIp := string(value)
+	remoteIp := string(value) // TODO list values
 
 	if remoteIp != address {
-		//Key present in this node
-		//TODO handle failures
-		c, _ := ContactServer(remoteIp)
+		// Try node list
+		//i := 0
+		for {
+			//if i > list.size() break;
+			//TODO skip to next one in the list
+			c, _, err := ContactServer(remoteIp)
+			log.Println("Get ContactServer failure", err)
+			if err != nil {
+				// i++
+				continue
+			}
 
-		log.Println("Found key at  ", remoteIp, " connecting...")
-		result, err := c.Get(ctx, &pb.Key{Key: in.GetKey(), Client: false})
-		if err != nil {
-			log.Fatal(err)
+			result, err := c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
+			if err != nil {
+				// i++
+				continue
+			}
+			return result, nil
 		}
+		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
 
-		return result, nil
 	} else {
-		return &pb.Value{Value: database.Get(in.GetKey())}, nil
+		value, versionNum := database.Get(in.GetKey())
+		fmt.Println("Version:", versionNum)
+		return &pb.Value{Value: value}, nil
 	}
 }
 
+// Put rpc function called to store a value on the responsible node. If no responsible node is found, the current node
+// becomes the responsible.
 func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
-	if in.GetClient() {
-		log.Printf("Received: client Put(%v, %v)", in.GetKey(), in.GetValue())
-		key := string(in.GetKey())
-		//Check where is stored
-		value, err := kdht.GetValue(ctx, key)
-		if err != nil {
-			if err == routing.ErrNotFound {
-				log.Println("Not found responsible node, putting in local db....")
-				// Not found in the dht
-				database.Put(in.GetKey(), in.GetValue())
+	log.Printf("Received: client Put(%v, %v)", in.GetKey(), in.GetValue())
 
-				//Set
-				err := kdht.PutValue(ctx, string(in.GetKey()), []byte(address))
-				if err != nil {
-					return &pb.Ack{Msg: "Err"}, err
-				}
+	ctxDht := context.Background()
 
-				return &pb.Ack{Msg: "Ok"}, nil
+	key := string(in.GetKey())
+	//Check where is stored
+	value, err := kdht.GetValue(ctxDht, key)
+	if err != nil {
+		if err == routing.ErrNotFound {
+			log.Println("Not found responsible node, putting in local db....")
+			// Not found in the dht
+			database.Put(in.GetKey(), in.GetValue())
+			channel := make(chan bool)
+			for i := 0; i < utils.Replicas; i++ {
+				// Replicate as goroutine
+				go func() {}()
 			}
-
-			log.Println("ERROR")
-			return &pb.Ack{Msg: "Err"}, err
-		}
-
-		//Found in the dht
-		remoteIp := string(value)
-
-		if remoteIp != address {
-			//Key present in this node
-			log.Println("Found key at  ", remoteIp, " connecting...")
-			c, _ := ContactServer(remoteIp)
-			_, err := c.Put(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue(), Client: false})
+			go func() {
+				time.Sleep(utils.Timeout)
+				channel <- false
+			}()
+			for i := 0; i < utils.WriteQuorum; i++ {
+				done := <-channel
+				if !done {
+					// Timeout
+				}
+			}
+			//Set
+			err := kdht.PutValue(ctxDht, string(in.GetKey()), []byte(address))
 			if err != nil {
-				return &pb.Ack{Msg: "Connection error"}, nil
+				return &pb.Ack{Msg: "Err"}, err
 			}
 
 			return &pb.Ack{Msg: "Ok"}, nil
+		} else {
+			return &pb.Ack{Msg: "Err"}, err
 		}
+		/*else {
+			log.Println("ERROR KDHT", err)
+			kdht.ForceRefresh()
 
+			return &pb.Ack{Msg: "Retry"}, nil
+		}
+		return &pb.Ack{Msg: "Err"}, err
+		*/
 	}
 
-	log.Printf("PUTTING IN LOCAL DB: %s:%s\n", string(in.GetKey()), string(in.GetValue()))
+	//Found in the dht
+	remoteIp := string(value)
+
+	if remoteIp != address {
+		//Connect to remote ip
+		//log.Println("Found key at  ", remoteIp, " connecting...")
+		c, _, err := ContactServer(remoteIp)
+		for err != nil {
+			//TODO skip to next one in the list
+			//c, _, err = ContactServer(remoteIp)
+			log.Println("Put ContactServer failure", err)
+			break
+		}
+
+		_, err = c.Put(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
+		}
+
+		return &pb.Ack{Msg: "Ok"}, nil
+	}
 
 	database.Put(in.GetKey(), in.GetValue())
 
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
+// Append i i no green pass
 func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	key := string(in.GetKey())
 
-	if in.GetClient() {
-		//Check where is stored
-		value, err := kdht.GetValue(ctx, key)
+	//Check where is stored
+	value, err := kdht.GetValue(ctx, key)
 
-		if err != nil {
-			if err == routing.ErrNotFound {
-				//Not found in the dht
-				database.Put(in.GetKey(), in.GetValue())
+	if err != nil {
+		if err == routing.ErrNotFound {
+			//Not found in the dht
+			database.Put(in.GetKey(), in.GetValue())
 
-				//Set
-				err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
-				if err != nil {
-					return nil, err
-				}
-
-				return &pb.Ack{Msg: "Ok"}, nil
+			//Set
+			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
+			if err != nil {
+				return nil, err
 			}
 
-			return nil, err
+			return &pb.Ack{Msg: "Ok"}, nil
+		} else {
+			<-kdht.ForceRefresh()
 		}
 
-		remoteIp := string(value)
+		return nil, err
+	}
 
-		//Found in the dht
-		if remoteIp != address {
-			//Connect to remote ip
-			log.Println("Found key at  ", remoteIp, " connecting...")
-			c, _ := ContactServer(remoteIp)
-			_, err := c.Append(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue(), Client: false})
-			if err != nil {
-				return &pb.Ack{Msg: "Connection error"}, nil
-			}
+	remoteIp := string(value)
+
+	//Found in the dht
+	if remoteIp != address {
+		//Connect to remote ip
+		log.Println("Found key at  ", remoteIp, " connecting...")
+		c, _, _ := ContactServer(remoteIp)
+		_, err := c.Append(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		if err != nil {
+			return &pb.Ack{Msg: "Connection error"}, nil
 		}
 	}
 
@@ -216,43 +320,60 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
+// Del
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	key := string(in.GetKey())
 
-	if in.GetClient() {
-		//Delete in the DHT
-		value, err := kdht.GetValue(ctx, key)
-		if err != nil {
-			if err == routing.ErrNotFound {
-				// Not found in the dht
-				//Can return
-				return &pb.Ack{Msg: "Ok"}, nil
-			}
-
-			return &pb.Ack{Msg: "Err"}, err
+	//Delete in the DHT
+	value, err := kdht.GetValue(ctx, key)
+	if err != nil {
+		if err == routing.ErrNotFound {
+			// Not found in the dht
+			//Can return
+			return &pb.Ack{Msg: "Ok"}, nil
 		}
 
-		remoteIp := string(value)
+		return &pb.Ack{Msg: "Err"}, err
+	} else {
+		<-kdht.ForceRefresh()
+	}
 
-		//Found in the dht
-		if remoteIp != address {
-			log.Println("Found key at  ", remoteIp, " connecting...")
-			c, _ := ContactServer(remoteIp)
-			_, err := c.Del(ctx, &pb.Key{Key: []byte("abc"), Client: false})
-			if err != nil {
-				return &pb.Ack{Msg: "Connection error"}, nil
-			}
+	remoteIp := string(value)
+
+	//Found in the dht
+	if remoteIp != address {
+		log.Println("Found key at  ", remoteIp, " connecting...")
+		c, _, _ := ContactServer(remoteIp)
+		_, err := c.Del(ctx, &pb.Key{Key: []byte("abc")})
+		if err != nil {
+			return &pb.Ack{Msg: "Connection error"}, nil
 		}
 	}
 
 	database.Del(in.GetKey())
 
-	err := kdht.PutValue(ctx, key, []byte(""))
+	err = kdht.PutValue(ctx, key, []byte(""))
 	if err != nil {
 		return nil, err
 	}
 	//TODO do delete
 	return &pb.Ack{Msg: "Ok"}, nil
+}
+
+func (s *server) Replicate(ctx context.Context, in *pb.KeyValueVersion) (*pb.Ack, error) {
+	database.Put(in.GetKey(), in.GetValue(), in.GetVersion())
+	return &pb.Ack{Msg: "Ok"}, nil
+}
+
+func callReplicate(ctx context.Context, ip string, key []byte, value [][]byte, version uint64) {
+	c, _, _ := ContactServer(ip)
+	ack, err := c.Replicate(ctx, &pb.KeyValueVersion{Key: key, Value: value, Version: version})
+	if err != nil {
+		return
+	}
+	if ack.GetMsg() != "Ok" {
+		// TODO
+	}
 }
 
 func ContainsNetwork(mask string, ip net.IP) (bool, error) {
@@ -270,18 +391,6 @@ func init() {
 var kdht *dht.IpfsDHT
 
 func main() {
-	lis, err := net.Listen("tcp", port)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	s := grpc.NewServer()
-	pb.RegisterOperationsServer(s, &server{})
-
-	bootstrap := os.Getenv("BOOTSTRAP_PEERS")
-	if len(bootstrap) != 0 {
-		log.Println("Found bootstrapp peer at ", bootstrap)
-	}
-
 	//Get ip address
 	ifaces, err := net.Interfaces()
 	// handle err
@@ -306,6 +415,27 @@ func main() {
 				break
 			}
 		}
+	}
+
+	replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
+	for len(replicaSet) != utils.Replicas {
+		log.Println("Waiting for replicas to connect...")
+		time.Sleep(60 * time.Second)
+		replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
+	}
+
+	log.Println("Replicas found: ", replicaSet)
+
+	lis, err := net.Listen("tcp", port)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	pb.RegisterOperationsServer(s, &server{})
+
+	bootstrap := os.Getenv("BOOTSTRAP_PEERS")
+	if len(bootstrap) != 0 {
+		log.Println("Found bootstrapp peer at ", bootstrap)
 	}
 
 	// Joining the DHT

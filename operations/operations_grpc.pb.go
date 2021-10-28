@@ -22,6 +22,11 @@ type OperationsClient interface {
 	Put(ctx context.Context, in *KeyValue, opts ...grpc.CallOption) (*Ack, error)
 	Append(ctx context.Context, in *KeyValue, opts ...grpc.CallOption) (*Ack, error)
 	Del(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error)
+	GetInternal(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Value, error)
+	PutInternal(ctx context.Context, in *KeyValue, opts ...grpc.CallOption) (*Ack, error)
+	AppendInternal(ctx context.Context, in *KeyValue, opts ...grpc.CallOption) (*Ack, error)
+	DelInternal(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error)
+	Replicate(ctx context.Context, in *KeyValueVersion, opts ...grpc.CallOption) (*Ack, error)
 }
 
 type operationsClient struct {
@@ -68,6 +73,51 @@ func (c *operationsClient) Del(ctx context.Context, in *Key, opts ...grpc.CallOp
 	return out, nil
 }
 
+func (c *operationsClient) GetInternal(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Value, error) {
+	out := new(Value)
+	err := c.cc.Invoke(ctx, "/operations.Operations/GetInternal", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operationsClient) PutInternal(ctx context.Context, in *KeyValue, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, "/operations.Operations/PutInternal", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operationsClient) AppendInternal(ctx context.Context, in *KeyValue, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, "/operations.Operations/AppendInternal", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operationsClient) DelInternal(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, "/operations.Operations/DelInternal", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operationsClient) Replicate(ctx context.Context, in *KeyValueVersion, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, "/operations.Operations/Replicate", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OperationsServer is the server API for Operations service.
 // All implementations must embed UnimplementedOperationsServer
 // for forward compatibility
@@ -76,6 +126,11 @@ type OperationsServer interface {
 	Put(context.Context, *KeyValue) (*Ack, error)
 	Append(context.Context, *KeyValue) (*Ack, error)
 	Del(context.Context, *Key) (*Ack, error)
+	GetInternal(context.Context, *Key) (*Value, error)
+	PutInternal(context.Context, *KeyValue) (*Ack, error)
+	AppendInternal(context.Context, *KeyValue) (*Ack, error)
+	DelInternal(context.Context, *Key) (*Ack, error)
+	Replicate(context.Context, *KeyValueVersion) (*Ack, error)
 	mustEmbedUnimplementedOperationsServer()
 }
 
@@ -94,6 +149,21 @@ func (UnimplementedOperationsServer) Append(context.Context, *KeyValue) (*Ack, e
 }
 func (UnimplementedOperationsServer) Del(context.Context, *Key) (*Ack, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Del not implemented")
+}
+func (UnimplementedOperationsServer) GetInternal(context.Context, *Key) (*Value, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInternal not implemented")
+}
+func (UnimplementedOperationsServer) PutInternal(context.Context, *KeyValue) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PutInternal not implemented")
+}
+func (UnimplementedOperationsServer) AppendInternal(context.Context, *KeyValue) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AppendInternal not implemented")
+}
+func (UnimplementedOperationsServer) DelInternal(context.Context, *Key) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DelInternal not implemented")
+}
+func (UnimplementedOperationsServer) Replicate(context.Context, *KeyValueVersion) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Replicate not implemented")
 }
 func (UnimplementedOperationsServer) mustEmbedUnimplementedOperationsServer() {}
 
@@ -180,6 +250,96 @@ func _Operations_Del_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Operations_GetInternal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Key)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationsServer).GetInternal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/operations.Operations/GetInternal",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationsServer).GetInternal(ctx, req.(*Key))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Operations_PutInternal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KeyValue)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationsServer).PutInternal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/operations.Operations/PutInternal",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationsServer).PutInternal(ctx, req.(*KeyValue))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Operations_AppendInternal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KeyValue)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationsServer).AppendInternal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/operations.Operations/AppendInternal",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationsServer).AppendInternal(ctx, req.(*KeyValue))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Operations_DelInternal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Key)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationsServer).DelInternal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/operations.Operations/DelInternal",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationsServer).DelInternal(ctx, req.(*Key))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Operations_Replicate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KeyValueVersion)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationsServer).Replicate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/operations.Operations/Replicate",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationsServer).Replicate(ctx, req.(*KeyValueVersion))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Operations_ServiceDesc is the grpc.ServiceDesc for Operations service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -202,6 +362,26 @@ var Operations_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Del",
 			Handler:    _Operations_Del_Handler,
+		},
+		{
+			MethodName: "GetInternal",
+			Handler:    _Operations_GetInternal_Handler,
+		},
+		{
+			MethodName: "PutInternal",
+			Handler:    _Operations_PutInternal_Handler,
+		},
+		{
+			MethodName: "AppendInternal",
+			Handler:    _Operations_AppendInternal_Handler,
+		},
+		{
+			MethodName: "DelInternal",
+			Handler:    _Operations_DelInternal_Handler,
+		},
+		{
+			MethodName: "Replicate",
+			Handler:    _Operations_Replicate_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

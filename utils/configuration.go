@@ -7,6 +7,16 @@ import (
 	"github.com/patrickmn/go-cache"
 	"log"
 	"os"
+	"time"
+)
+
+const (
+	AwsRegion   = "us-east-1"
+	Replicas    = 4
+	N = Replicas + 1
+	WriteQuorum = N / 2 + 1
+	ReadQuorum  = N / 2
+	Timeout 	= 5 * time.Second
 )
 
 type Configuration struct {

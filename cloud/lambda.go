@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"SDCC/utils"
 	"encoding/json"
 	_ "encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/opentracing/opentracing-go/log"
+	"strconv"
 	_ "strconv"
 	"strings"
 )
@@ -32,7 +34,7 @@ func setupClient(region string) *lambda.Lambda {
 }
 
 func RegisterToTheNetwork(ip, network string, n int, region string) []string {
-	client := setupClient(region)
+	client := setupClient("region")
 
 	x := RequestNetwork{Ip: ip, Network: network, N: n}
 
@@ -57,6 +59,19 @@ func RegisterToTheNetwork(ip, network string, n int, region string) []string {
 
 	return dat["results"]
 
+}
+
+func RegisterStub(ip, network string, n int, region string) []string {
+	address := "172.17.0."
+	set := make([]string, 0)
+	for i := 2; i < utils.Replicas + 3; i++ {
+		abba := strconv.Itoa(i)
+		tmpAddr := address + abba
+		if tmpAddr != ip {
+			set = append(set, tmpAddr)
+		}
+	}
+	return set
 }
 
 func main() {

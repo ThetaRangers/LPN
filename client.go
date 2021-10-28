@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	serverAddress1 = "172.17.0.3:50051"
-	serverAddress2 = "172.17.0.3:50051"
+	serverAddress1 = "172.17.0.2:50051"
+	serverAddress2 = "172.17.0.2:50051"
 )
 
 func main() {
@@ -32,10 +32,10 @@ func main() {
 	c2 := pb.NewOperationsClient(conn2)
 
 	// Contact the server and print out its response.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20 * time.Second)
 	defer cancel()
 
-	r1, err := c1.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("defa"), Client: true})
+	r1, err := c1.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("defa")})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func main() {
 	}
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
 
-	r3, err := c2.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("defallo"), Client: true})
+	r3, err := c2.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("defallo")})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -61,24 +61,24 @@ func main() {
 	}
 	log.Printf("Get(\"abc\"): %s", r4.GetValue())
 
-	r1, err = c1.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("ghi"), Client: true})
+	r1, err = c1.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("ghi")})
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Append(\"abc\", \"ghi\"): %s", r1.GetMsg())
 
-	r2, err = c2.Get(ctx, &pb.Key{Key: []byte("abc"), Client: true})
+	r2, err = c2.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
 
-	r1, err = c2.Del(ctx, &pb.Key{Key: []byte("abc"), Client: true})
+	r1, err = c2.Del(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Del(\"abc\"): %s", r1.GetMsg())
-	r2, err = c1.Get(ctx, &pb.Key{Key: []byte("abc"), Client: true})
+	r2, err = c1.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal(err)
 	}
