@@ -7,6 +7,7 @@ import (
 	pb "SDCC/operations"
 	"SDCC/utils"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/libp2p/go-libp2p-core/routing"
@@ -39,6 +40,7 @@ type server struct {
 type addrList []multiaddr.Multiaddr
 
 var replicaSet []string
+var cluster []string
 
 var database db.Database
 var ip net.IP
@@ -169,18 +171,19 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		}
 	}
 
-	remoteIp := string(value) // TODO list values
+	var targetCluster []string
+	json.Unmarshal(value, &targetCluster)
 
-	if remoteIp != address {
+	if targetCluster[0] != address {
 		// Try node list
-		//i := 0
+		i := 0
 		for {
 			//if i > list.size() break;
 			//TODO skip to next one in the list
-			c, _, err := ContactServer(remoteIp)
-			log.Println("Get ContactServer failure", err)
+			c, _, err := ContactServer(targetCluster[i])
+
 			if err != nil {
-				// i++
+				i++
 				continue
 			}
 
@@ -189,6 +192,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 				// i++
 				continue
 			}
+
 			return result, nil
 		}
 		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
@@ -243,8 +247,8 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 
 			propagatePut(ctx, in.GetKey(), dbInput, ver)
 
-			//Set
-			err := kdht.PutValue(ctxDht, string(in.GetKey()), []byte(address))
+			dhtInput, _ := json.Marshal(cluster)
+			err := kdht.PutValue(ctxDht, string(in.GetKey()), dhtInput)
 			if err != nil {
 				return &pb.Ack{Msg: "Err"}, err
 			}
@@ -256,16 +260,22 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	}
 
 	//Found in the dht
-	remoteIp := string(value)
+	var targetCluster []string
+	json.Unmarshal(value, &targetCluster)
 
-	if remoteIp != address {
+	// If not the master
+	if targetCluster[0] != address {
 		//Connect to remote ip
-		//log.Println("Found key at  ", remoteIp, " connecting...")
-		c, _, err := ContactServer(remoteIp)
+		c, _, err := ContactServer(targetCluster[0])
+		i := 1
 		for err != nil {
 			//TODO skip to next one in the list
-			//c, _, err = ContactServer(remoteIp)
-			log.Println("Put ContactServer failure", err)
+			c, _, err = ContactServer(targetCluster[i])
+			if err != nil {
+				i++
+				continue
+			}
+
 			break
 		}
 
@@ -312,13 +322,25 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		return nil, err
 	}
 
-	remoteIp := string(value)
+	var targetCluster []string
+	json.Unmarshal(value, &targetCluster)
 
 	//Found in the dht
-	if remoteIp != address {
+	if targetCluster[0] != address {
 		//Connect to remote ip
-		log.Println("Found key at  ", remoteIp, " connecting...")
-		c, _, _ := ContactServer(remoteIp)
+		c, _, _ := ContactServer(targetCluster[0])
+		i := 1
+		for err != nil {
+			//TODO skip to next one in the list
+			c, _, err = ContactServer(targetCluster[i])
+			if err != nil {
+				i++
+				continue
+			}
+
+			break
+		}
+
 		_, err := c.Append(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
 		if err != nil {
 			return &pb.Ack{Msg: "Connection error"}, nil
@@ -346,12 +368,26 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 
 		return &pb.Ack{Msg: "Err"}, err
 	}
-	remoteIp := string(value)
+
+	var targetCluster []string
+	json.Unmarshal(value, &targetCluster)
 
 	//Found in the dht
-	if remoteIp != address {
-		log.Println("Found key at  ", remoteIp, " connecting...")
-		c, _, _ := ContactServer(remoteIp)
+	if targetCluster[0] != address {
+
+		c, _, _ := ContactServer(targetCluster[0])
+		i := 1
+		for err != nil {
+			//TODO skip to next one in the list
+			c, _, err = ContactServer(targetCluster[i])
+			if err != nil {
+				i++
+				continue
+			}
+
+			break
+		}
+
 		_, err := c.Del(ctx, &pb.Key{Key: in.GetKey()})
 		if err != nil {
 			return &pb.Ack{Msg: "Connection error"}, nil
@@ -443,7 +479,8 @@ func main() {
 			}
 
 			if check {
-				address = fmt.Sprintf("%s%s", ip, port)
+				//address = fmt.Sprintf("%s%s", ip, port)
+				address = ip.String()
 				log.Printf("IP: %s", ip)
 				break
 			}
@@ -457,7 +494,12 @@ func main() {
 		replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
 	}
 
+	cluster = make([]string, 0)
+	cluster = append(cluster, ip.String())
+	cluster = append(cluster, replicaSet...)
+
 	log.Println("Replicas found: ", replicaSet)
+	log.Println("Cluster: ", cluster)
 
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
