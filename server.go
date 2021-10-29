@@ -275,11 +275,11 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		}
 
 		return &pb.Ack{Msg: "Ok"}, nil
+	} else {
+		dbInput = append(dbInput, in.GetValue())
+		ver := database.Put(in.GetKey(), dbInput)
+		propagatePut(ctx, in.GetKey(), dbInput, ver)
 	}
-
-	dbInput = append(dbInput, in.GetValue())
-	ver := database.Put(in.GetKey(), dbInput)
-	propagatePut(ctx, in.GetKey(), dbInput, ver)
 
 	return &pb.Ack{Msg: "Ok"}, nil
 }
@@ -323,10 +323,10 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		if err != nil {
 			return &pb.Ack{Msg: "Connection error"}, nil
 		}
+	} else {
+		dbRes, versions := database.Append(in.GetKey(), in.GetValue())
+		propagatePut(ctx, in.GetKey(), dbRes, versions)
 	}
-
-	dbRes, versions := database.Append(in.GetKey(), in.GetValue())
-	propagatePut(ctx, in.GetKey(), dbRes, versions)
 
 	return &pb.Ack{Msg: "Ok"}, nil
 }
@@ -352,24 +352,46 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	if remoteIp != address {
 		log.Println("Found key at  ", remoteIp, " connecting...")
 		c, _, _ := ContactServer(remoteIp)
-		_, err := c.Del(ctx, &pb.Key{Key: []byte("abc")})
+		_, err := c.Del(ctx, &pb.Key{Key: in.GetKey()})
 		if err != nil {
 			return &pb.Ack{Msg: "Connection error"}, nil
 		}
+	} else {
+		database.Del(in.GetKey())
+
+		channel := make(chan bool)
+		for i := 0; i < utils.Replicas; i++ {
+			// Replicate as goroutine
+			replicaAddr := replicaSet[i]
+
+			go func() {
+				client, _, _ := ContactServer(replicaAddr)
+				client.Del(ctx, &pb.Key{Key: in.GetKey()})
+				channel <- true
+			}()
+		}
+		go func() {
+			time.Sleep(utils.Timeout)
+			channel <- false
+		}()
+		for i := 0; i < utils.WriteQuorum; i++ {
+			done := <-channel
+			if !done {
+				// Timeout
+			}
+		}
+
+		err = kdht.PutValue(ctx, key, []byte(""))
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	database.Del(in.GetKey())
-
-	err = kdht.PutValue(ctx, key, []byte(""))
-	if err != nil {
-		return nil, err
-	}
 	//TODO do delete
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
 func (s *server) Replicate(ctx context.Context, in *pb.KeyValueVersion) (*pb.Ack, error) {
-	log.Println("RECEIVED REPLICATE REQUEST")
 	database.Put(in.GetKey(), in.GetValue(), in.GetVersion())
 	return &pb.Ack{Msg: "Ok"}, nil
 }
