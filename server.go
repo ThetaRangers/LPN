@@ -85,7 +85,8 @@ func (nv NullValidator) Select(string, [][]byte) (int, error) {
 }
 
 func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
-	conn, err := grpc.Dial(ip, grpc.WithInsecure())
+	addr := ip + ":50051"
+	conn, err := grpc.Dial(addr, grpc.WithInsecure())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -176,25 +177,21 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 
 	if targetCluster[0] != address {
 		// Try node list
-		i := 0
-		for {
+		c, _, err := ContactServer(targetCluster[0])
+		i := 1
+		for err != nil {
 			//if i > list.size() break;
 			//TODO skip to next one in the list
-			c, _, err := ContactServer(targetCluster[i])
-
+			c, _, err = ContactServer(targetCluster[i])
 			if err != nil {
 				i++
 				continue
 			}
-
-			result, err := c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
-			if err != nil {
-				// i++
-				continue
-			}
-
-			return result, nil
 		}
+
+		result, err := c.Get(ctx, &pb.Key{Key: in.GetKey()})
+
+		return result, nil
 		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
 
 	} else {
@@ -270,13 +267,12 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		i := 1
 		for err != nil {
 			//TODO skip to next one in the list
+
 			c, _, err = ContactServer(targetCluster[i])
 			if err != nil {
 				i++
 				continue
 			}
-
-			break
 		}
 
 		_, err = c.Put(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
@@ -337,8 +333,6 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 				i++
 				continue
 			}
-
-			break
 		}
 
 		_, err := c.Append(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
@@ -384,8 +378,6 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 				i++
 				continue
 			}
-
-			break
 		}
 
 		_, err := c.Del(ctx, &pb.Key{Key: in.GetKey()})
@@ -433,8 +425,7 @@ func (s *server) Replicate(ctx context.Context, in *pb.KeyValueVersion) (*pb.Ack
 }
 
 func callReplicate(ctx context.Context, ip string, key []byte, value [][]byte, version uint64) {
-	address := ip + ":50051"
-	c, _, _ := ContactServer(address)
+	c, _, _ := ContactServer(ip)
 	ack, err := c.Replicate(ctx, &pb.KeyValueVersion{Key: key, Value: value, Version: version})
 	if err != nil {
 		return
