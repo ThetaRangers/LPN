@@ -30,3 +30,12 @@ terraform/*.zip
 terraform/terraform.tfstate*
 tfdestroy
 tfplan
+
+# LaTeX related files
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.log
+*.run.xml
+*.synctex.gz
