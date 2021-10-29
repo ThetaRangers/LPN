@@ -4,7 +4,6 @@ require (
 	github.com/aws/aws-sdk-go v1.41.0
 	github.com/dgraph-io/badger v1.6.2
 	github.com/go-redis/redis/v8 v8.11.4
-	github.com/hexablock/vivaldi v0.0.0-20180727225019-07adad3f2b5f
 	github.com/libp2p/go-libp2p v0.15.1
 	github.com/libp2p/go-libp2p-core v0.9.0
 	github.com/libp2p/go-libp2p-kad-dht v0.13.1
@@ -13,7 +12,6 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	google.golang.org/grpc v1.41.0
 	google.golang.org/protobuf v1.27.1
-	labix.org/v1/vclock v0.0.0-20140604135701-000000000005
 )
 
 require (
@@ -121,7 +119,6 @@ require (
 	golang.org/x/sys v0.0.0-20210816183151-1e6c022a8912 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987 // indirect
-	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 // indirect
 )
 
 go 1.17

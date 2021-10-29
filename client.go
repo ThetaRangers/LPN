@@ -83,4 +83,10 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
+
+	r2, err = c1.Get(ctx, &pb.Key{Key: []byte("abbacchio")})
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Get(\"abbacchio\"): %s", r2.GetValue())
 }

@@ -11,7 +11,7 @@ type BadgerDB struct {
 	Db *badger.DB
 }
 
-func (b BadgerDB) Get(key []byte) ([][]byte, uint64) {
+func (b BadgerDB) Get(key []byte) ([][]byte, uint64, error) {
 	var slice [][]byte
 	err := b.Db.View(func(txn *badger.Txn) error {
 		var valCopy []byte
@@ -32,21 +32,27 @@ func (b BadgerDB) Get(key []byte) ([][]byte, uint64) {
 
 	if err != nil {
 		if err == badger.ErrKeyNotFound {
-			return nil, 0
+			return nil, 0, nil
 		} else {
 			log.Fatal(err)
+			return nil, 0, err
 		}
 	}
 
-	return slice[1:], binary.BigEndian.Uint64(slice[0])
+	return slice[1:], binary.BigEndian.Uint64(slice[0]), nil
 }
 
-func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) uint64 {
+func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, error) {
 	var versionNum uint64
 	err := b.Db.Update(func(txn *badger.Txn) error {
+		var err2 error
 		if len(version) != 1 {
 			var value [][]byte
-			value, versionNum = b.Get(key)
+			value, versionNum, err2 = b.Get(key)
+			if err2 != nil {
+				return err2
+			}
+
 			if value == nil {
 				versionNum = 0
 			} else {
@@ -72,12 +78,13 @@ func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) uint64 {
 	})
 	if err != nil {
 		log.Fatal(err)
+		return 0, err
 	}
 
-	return versionNum
+	return versionNum, nil
 }
 
-func (b BadgerDB) Append(key, value []byte) ([][]byte, uint64) {
+func (b BadgerDB) Append(key, value []byte) ([][]byte, uint64, error) {
 	var versionNumber uint64
 	var valCopy []byte
 	var buffer []byte
@@ -125,10 +132,10 @@ func (b BadgerDB) Append(key, value []byte) ([][]byte, uint64) {
 		log.Fatal(err)
 	}
 
-	return slice[1:], versionNumber
+	return slice[1:], versionNumber, nil
 }
 
-func (b BadgerDB) Del(key []byte) {
+func (b BadgerDB) Del(key []byte) error {
 	err := b.Db.Update(func(txn *badger.Txn) error {
 		err := txn.Delete(key)
 		if err != nil {
@@ -140,9 +147,8 @@ func (b BadgerDB) Del(key []byte) {
 
 	if err != nil {
 		log.Fatal(err)
+		return err
 	}
-}
 
-func (b BadgerDB) Replicate(key []byte, value [][]byte, version uint64) {
-
+	return nil
 }

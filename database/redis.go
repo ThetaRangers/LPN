@@ -14,23 +14,26 @@ type RedisDB struct {
 	Db *redis.Client
 }
 
-func (r RedisDB) Get(key []byte) ([][]byte, uint64) {
+func (r RedisDB) Get(key []byte) ([][]byte, uint64, error) {
 	ctx := context.Background()
 	var slice [][]byte
 
 	val, err := r.Db.Get(ctx, string(key)).Bytes()
 	if err == redis.Nil {
-		return nil, 0
+		return nil, 0, nil
 	} else if err != nil {
 		log.Fatal(err)
 	}
 
 	err = json.Unmarshal(val, &slice)
+	if err != nil {
+		return nil, 0, err
+	}
 
-	return slice[1:], binary.BigEndian.Uint64(slice[0])
+	return slice[1:], binary.BigEndian.Uint64(slice[0]), nil
 }
 
-func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) uint64 {
+func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, error) {
 	ctx := context.Background()
 	var versionNum uint64
 
@@ -39,8 +42,12 @@ func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) uint64 {
 	_, err := r.Db.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
 		if len(version) != 1 {
 			var value [][]byte
+			var err2 error
 
-			value, versionNum = r.Get(key)
+			value, versionNum, err2 = r.Get(key)
+			if err2 != nil {
+				return err2
+			}
 
 			if value == nil {
 				versionNum = 0
@@ -72,13 +79,13 @@ func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) uint64 {
 	})
 	fmt.Println("Ending transaction")
 	if err != nil {
-		log.Fatal(err)
+		return 0, err
 	}
 
-	return versionNum
+	return versionNum, nil
 }
 
-func (r RedisDB) Append(key, value []byte) ([][]byte, uint64) {
+func (r RedisDB) Append(key, value []byte) ([][]byte, uint64, error) {
 	ctx := context.Background()
 	var slice [][]byte
 	var versionNumber uint64
@@ -116,19 +123,21 @@ func (r RedisDB) Append(key, value []byte) ([][]byte, uint64) {
 	})
 
 	if err != nil {
-		log.Fatal(err)
+		return nil, 0, nil
 	}
 
-	return slice[1:], versionNumber
+	return slice[1:], versionNumber, nil
 }
 
-func (r RedisDB) Del(key []byte) {
+func (r RedisDB) Del(key []byte) error {
 	ctx := context.Background()
 
 	err := r.Db.Del(ctx, string(key)).Err()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	return nil
 }
 
 /*

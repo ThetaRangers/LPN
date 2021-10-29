@@ -164,7 +164,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	key := string(in.GetKey())
 	value, err := kdht.GetValue(ctx, key)
 	if err != nil {
-		if err == routing.ErrNotFound {
+		if err == routing.ErrNotFound || len(value) == 0 {
 			//Not found in the dht
 			return &pb.Value{Value: [][]byte{}}, nil
 		} else {
@@ -195,7 +195,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
 
 	} else {
-		value, versionNum := database.Get(in.GetKey())
+		value, versionNum, _ := database.Get(in.GetKey())
 		fmt.Println("Version:", versionNum)
 		return &pb.Value{Value: value}, nil
 	}
@@ -236,11 +236,11 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	//Check where is stored
 	value, err := kdht.GetValue(ctxDht, key)
 	if err != nil {
-		if err == routing.ErrNotFound {
+		if err == routing.ErrNotFound || len(value) == 0 {
 			log.Println("Not found responsible node, putting in local db....")
 			// Not found in the dht
 			dbInput = append(dbInput, in.GetValue())
-			ver := database.Put(in.GetKey(), dbInput)
+			ver, _ := database.Put(in.GetKey(), dbInput)
 
 			propagatePut(ctx, in.GetKey(), dbInput, ver)
 
@@ -283,7 +283,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		return &pb.Ack{Msg: "Ok"}, nil
 	} else {
 		dbInput = append(dbInput, in.GetValue())
-		ver := database.Put(in.GetKey(), dbInput)
+		ver, _ := database.Put(in.GetKey(), dbInput)
 		propagatePut(ctx, in.GetKey(), dbInput, ver)
 	}
 
@@ -299,11 +299,11 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	var dbInput [][]byte
 
 	if err != nil {
-		if err == routing.ErrNotFound {
+		if err == routing.ErrNotFound || len(value) == 0 {
 			//Not found in the dht
 
 			dbInput = append(dbInput, in.GetValue())
-			version := database.Put(in.GetKey(), dbInput)
+			version, _ := database.Put(in.GetKey(), dbInput)
 			propagatePut(ctx, in.GetKey(), dbInput, version)
 
 			//Set
@@ -340,7 +340,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			return &pb.Ack{Msg: "Connection error"}, nil
 		}
 	} else {
-		dbRes, versions := database.Append(in.GetKey(), in.GetValue())
+		dbRes, versions, _ := database.Append(in.GetKey(), in.GetValue())
 		propagatePut(ctx, in.GetKey(), dbRes, versions)
 	}
 
@@ -354,7 +354,7 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	//Delete in the DHT
 	value, err := kdht.GetValue(ctx, key)
 	if err != nil {
-		if err == routing.ErrNotFound {
+		if err == routing.ErrNotFound || len(value) == 0 {
 			// Not found in the dht
 			//Can return
 			return &pb.Ack{Msg: "Ok"}, nil
@@ -368,7 +368,6 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 
 	//Found in the dht
 	if targetCluster[0] != address {
-
 		c, _, _ := ContactServer(targetCluster[0])
 		i := 1
 		for err != nil {
@@ -394,7 +393,7 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 
 			go func() {
 				client, _, _ := ContactServer(replicaAddr)
-				client.Del(ctx, &pb.Key{Key: in.GetKey()})
+				client.DeleteFromReplicas(ctx, &pb.Key{Key: in.GetKey()})
 				channel <- true
 			}()
 		}
@@ -411,11 +410,21 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 
 		err = kdht.PutValue(ctx, key, []byte(""))
 		if err != nil {
-			return nil, err
+			return &pb.Ack{Msg: "Err"}, err
 		}
 	}
 
 	//TODO do delete
+	return &pb.Ack{Msg: "Ok"}, nil
+}
+
+// DeleteFromReplicas internal function to delete keys
+func (s *server) DeleteFromReplicas(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
+	err := database.Del(in.GetKey())
+	if err != nil {
+		return &pb.Ack{Msg: "Err"}, err
+	}
+
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 

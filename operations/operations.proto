@@ -14,6 +14,7 @@ service Operations {
   rpc AppendInternal (KeyValue) returns (Ack) {}
   rpc DelInternal (Key) returns (Ack) {}
   rpc Replicate (KeyValueVersion) returns (Ack) {}
+  rpc DeleteFromReplicas (Key) returns (Ack) {}
 }
 
 message Key {
