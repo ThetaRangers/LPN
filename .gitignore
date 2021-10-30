@@ -39,3 +39,6 @@ tfplan
 *.log
 *.run.xml
 *.synctex.gz
+
+# RDS usernsame and password
+terraform/db_credentials.tfvars

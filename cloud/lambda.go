@@ -11,13 +11,17 @@ import (
 	"github.com/opentracing/opentracing-go/log"
 	"strconv"
 	_ "strconv"
-	"strings"
 )
 
 type RequestNetwork struct {
-	Ip      string `json:"ip"`
-	Network string `json:"network"`
-	N       int    `json:"n"`
+	Ip string `json:"ip"`
+	N  int    `json:"n"`
+}
+
+type ReplicaSet struct {
+	Crashed int      `json:"crashed"`
+	Valid   int      `json:"valid"`
+	IpList  []string `json:"ipList"`
 }
 
 func setupClient(region string) *lambda.Lambda {
@@ -33,10 +37,10 @@ func setupClient(region string) *lambda.Lambda {
 	return svc
 }
 
-func RegisterToTheNetwork(ip, network string, n int, region string) []string {
-	client := setupClient("region")
+func RegisterToTheNetwork(ip string, n int, region string) ReplicaSet {
+	client := setupClient(region)
 
-	x := RequestNetwork{Ip: ip, Network: network, N: n}
+	x := RequestNetwork{Ip: ip, N: n}
 
 	payload, err := json.Marshal(&x)
 	if err != nil {
@@ -44,27 +48,24 @@ func RegisterToTheNetwork(ip, network string, n int, region string) []string {
 	}
 
 	//TODO change name of the lambda function
-	result, err := client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("registryService"), Payload: payload})
+	result, err := client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("RegService"), Payload: payload})
 	if err != nil {
 		log.Error(err)
 	}
 
-	fmt.Println(string(result.Payload))
-	res := strings.Replace(string(result.Payload[1:len(result.Payload)-1]), "\\", "", -1)
-
-	var dat map[string][]string
-	if err := json.Unmarshal([]byte(res), &dat); err != nil {
+	b := []byte(result.Payload)
+	resp := ReplicaSet{}
+	if err := json.Unmarshal(b, &resp); err != nil {
 		panic(err)
 	}
 
-	return dat["results"]
-
+	return resp
 }
 
 func RegisterStub(ip, network string, n int, region string) []string {
 	address := "172.17.0."
 	set := make([]string, 0)
-	for i := 2; i < utils.Replicas + 3; i++ {
+	for i := 2; i < utils.Replicas+3; i++ {
 		abba := strconv.Itoa(i)
 		tmpAddr := address + abba
 		if tmpAddr != ip {
@@ -76,5 +77,14 @@ func RegisterStub(ip, network string, n int, region string) []string {
 
 func main() {
 
-	fmt.Println(RegisterToTheNetwork("test12", "tabellone", 2, "us-east-1"))
+	ret := RegisterToTheNetwork("test12", 2, "us-east-1")
+	fmt.Printf("crashed %d valid %d list %s\n", ret.Crashed, ret.Valid, ret.IpList)
+	/*TODO order to parse:
+	-crashed:
+		-1 -> ipList old replicas
+		-0 -> check valid
+	-valid:
+		-1 -> ipList new replicas
+		-0 -> ipList empty. Not enough nodes to get n replicas. Retry.
+	*/
 }

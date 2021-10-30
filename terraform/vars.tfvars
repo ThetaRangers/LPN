@@ -1,5 +1,0 @@
-function_name = "registryService"
-lambda_zip = "lambda.py.zip"
-handler = "lambda.lambda_handler"
-dynamo_table_name = "Storage"
-dynamo_table_name1 = "tabellone"
