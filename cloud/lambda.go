@@ -14,14 +14,20 @@ import (
 )
 
 type RequestNetwork struct {
-	Ip string `json:"ip"`
-	N  int    `json:"n"`
+	Ip    string `json:"ip"`
+	N     int    `json:"n"`
+	IpStr string `json:"ipStr"`
+}
+
+type IpStruct struct {
+	Ip       string `json:"ip"`
+	IpString string `json:"strIp"`
 }
 
 type ReplicaSet struct {
-	Crashed int      `json:"crashed"`
-	Valid   int      `json:"valid"`
-	IpList  []string `json:"ipList"`
+	Crashed int        `json:"crashed"`
+	Valid   int        `json:"valid"`
+	IpList  []IpStruct `json:"ipList"`
 }
 
 func setupClient(region string) *lambda.Lambda {
@@ -37,10 +43,10 @@ func setupClient(region string) *lambda.Lambda {
 	return svc
 }
 
-func RegisterToTheNetwork(ip string, n int, region string) ReplicaSet {
+func RegisterToTheNetwork(ip string, ipStr string, n int, region string) ReplicaSet {
 	client := setupClient(region)
 
-	x := RequestNetwork{Ip: ip, N: n}
+	x := RequestNetwork{Ip: ip, IpStr: ipStr, N: n}
 
 	payload, err := json.Marshal(&x)
 	if err != nil {
@@ -77,8 +83,13 @@ func RegisterStub(ip, network string, n int, region string) []string {
 
 func main() {
 
-	ret := RegisterToTheNetwork("test12", 2, "us-east-1")
-	fmt.Printf("crashed %d valid %d list %s\n", ret.Crashed, ret.Valid, ret.IpList)
+	ret := RegisterToTheNetwork("ip3", "ip3str", 2, "us-east-1")
+	fmt.Printf("crashed %d valid %d list\n", ret.Crashed, ret.Valid)
+	for i := 0; i < len(ret.IpList); i++ {
+		r := ret.IpList[i]
+		fmt.Printf("ip %s ip string %s\n", r.Ip, r.IpString)
+	}
+
 	/*TODO order to parse:
 	-crashed:
 		-1 -> ipList old replicas

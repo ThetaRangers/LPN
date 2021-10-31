@@ -1,4 +1,4 @@
-createNodeTable = "create table IF NOT EXISTS Nodes (nodeIP varchar(255) NOT NULL, replicaCount int, PRIMARY KEY (nodeIP))"
+createNodeTable = "create table IF NOT EXISTS Nodes (nodeIP varchar(255) NOT NULL, ipString varchar(255), replicaCount int, PRIMARY KEY (nodeIP))"
 createReplicaTable = ("create table IF NOT EXISTS ReplicaOf (Master varchar(255) NOT NULL, Replica varchar(255) NOT NULL,"
                         " PRIMARY KEY (Master, Replica), INDEX idx0 (Replica ASC) VISIBLE, INDEX idx1 (Master ASC) VISIBLE,"
                         " CONSTRAINT con0 FOREIGN KEY (Master) REFERENCES Nodes (nodeIP) ON DELETE NO ACTION ON UPDATE NO ACTION,"
@@ -6,7 +6,7 @@ createReplicaTable = ("create table IF NOT EXISTS ReplicaOf (Master varchar(255)
 
 
 dropIfExistsRep = """DROP PROCEDURE IF EXISTS replicaSet"""
-replicaProc =     """CREATE PROCEDURE `replicaSet`(in myIP varchar(255), in replicaNumber int, out valid int, out crashed int)
+replicaProc =     """CREATE PROCEDURE `replicaSet`(in myIP varchar(255),in ipStr varchar(255),in replicaNumber int, out valid int, out crashed int)
 BEGIN
    
    declare var_nodes int;
@@ -20,7 +20,7 @@ BEGIN
    end;
    
    drop temporary table if exists tempNode;
-   create temporary table tempNode(repIP varchar(255));
+   create temporary table tempNode(repIP varchar(255), repIpStr varchar(255));
    
    set AUTOCOMMIT = 0; 
    set session transaction isolation level serializable;
@@ -29,7 +29,7 @@ BEGIN
    transactionBlock:BEGIN
    
     -- add Node if not exists
-   insert ignore into Nodes (nodeIP, replicaCount) values (myIP, 0);
+   insert ignore into Nodes (nodeIP, ipString, replicaCount) values (myIP, ipStr, 0);
 
    -- check node number for replication
    select count(nodeIP)
@@ -51,8 +51,8 @@ BEGIN
       set crashed = 1;
 
       -- return old replicas
-      select Replica 
-      from ReplicaOf
+      select Replica, ipString
+      from ReplicaOf join Nodes on Nodes.nodeIP=ReplicaOf.Replica
       where Master = myIP; 
                            
       leave transactionBlock;
@@ -61,13 +61,13 @@ BEGIN
    set crashed = 0;
     
     if(var_nodes < replicaNumber) then
-      select nodeIP from Nodes limit 0;
+      select nodeIP, ipString from Nodes limit 0;
       leave transactionBlock;
    end if;
 
    -- new replicas
    insert into tempNode
-   select nodeIP
+   select nodeIP, ipString
    from Nodes
    where nodeIP <> myIP
    order by replicaCount asc
@@ -89,7 +89,7 @@ BEGIN
     end while;
     
    -- return nodesIP
-   select repIP from tempNode; 
+   select repIP, repIpStr from tempNode;
                      
    END transactionBlock;
 

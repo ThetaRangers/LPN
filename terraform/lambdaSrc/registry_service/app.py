@@ -15,7 +15,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 try:
-    conn = pymysql.connect(host=rds_host, user=name, passwd=password, db=db_name, connect_timeout=50)
+    conn = pymysql.connect(host=rds_host, user=name, passwd=password, db=db_name, connect_timeout=5)
 except:
     logger.error(f"ERROR: Unexpected error: Could not connect to MySql instance., rds_host is {rds_host}, db_name is {db_name}")
     sys.exit()
@@ -26,16 +26,21 @@ def handler_registry(event, context):
     #params
     ip = event['ip']
     n = event['n']
+    ipStr = event['ipStr']
 
     ipList = []
 
     with conn.cursor() as cur:
-        args = (ip, n, 0, 0)
+        args = (ip, ipStr, n, 0, 0)
         cur.callproc('replicaSet',args)
 
         rows = cur.fetchall()
         for row in rows:
-            ipList.append(f'{row[0]}')
+            ip = f'{row[0]}'
+            ipStr = f'{row[1]}'
+            jsonField = { "ip": ip,
+                          "strIp": ipStr }
+            ipList.append(jsonField)
 
         cur.execute(retParams)
         outParams = cur.fetchone()
