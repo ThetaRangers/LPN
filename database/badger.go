@@ -84,7 +84,7 @@ func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, er
 	return versionNum, nil
 }
 
-func (b BadgerDB) Append(key, value []byte) ([][]byte, uint64, error) {
+func (b BadgerDB) Append(key []byte, value [][]byte) ([][]byte, uint64, error) {
 	var versionNumber uint64
 	var valCopy []byte
 	var buffer []byte
@@ -116,7 +116,7 @@ func (b BadgerDB) Append(key, value []byte) ([][]byte, uint64, error) {
 			slice = append(slice, num)
 		}
 
-		slice = append(slice, value)
+		slice = append(slice, value...)
 
 		buffer, err = json.Marshal(slice)
 		if err != nil {

@@ -85,7 +85,7 @@ func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, err
 	return versionNum, nil
 }
 
-func (r RedisDB) Append(key, value []byte) ([][]byte, uint64, error) {
+func (r RedisDB) Append(key []byte, value [][]byte) ([][]byte, uint64, error) {
 	ctx := context.Background()
 	var slice [][]byte
 	var versionNumber uint64
@@ -110,7 +110,7 @@ func (r RedisDB) Append(key, value []byte) ([][]byte, uint64, error) {
 			slice = append(slice, num)
 		}
 
-		slice = append(slice, value)
+		slice = append(slice, value...)
 		buffer, err := json.Marshal(slice)
 
 		err = pipe.Set(ctx, string(key), buffer, 0).Err()

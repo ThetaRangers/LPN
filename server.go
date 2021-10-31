@@ -86,10 +86,12 @@ func (nv NullValidator) Select(string, [][]byte) (int, error) {
 
 func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	addr := ip + ":50051"
-	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		return nil, nil, err
 	}
+
 	c := pb.NewOperationsClient(conn)
 	return c, conn, nil
 }
@@ -166,8 +168,10 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			//Not found in the dht
+			log.Println("Not Found in the dht")
 			return &pb.Value{Value: [][]byte{}}, nil
 		} else {
+			log.Println("Orrore")
 			return &pb.Value{Value: [][]byte{}}, err
 		}
 	}
@@ -189,7 +193,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 			}
 		}
 
-		result, err := c.Get(ctx, &pb.Key{Key: in.GetKey()})
+		result, err := c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
 
 		return result, nil
 		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
@@ -199,6 +203,27 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		fmt.Println("Version:", versionNum)
 		return &pb.Value{Value: value}, nil
 	}
+}
+
+// GetInternal internal function called by other nodes to retrieve an information
+func (s *server) GetInternal(ctx context.Context, in *pb.Key) (*pb.Value, error) {
+	key := string(in.GetKey())
+	value, err := kdht.GetValue(ctx, key)
+	if err != nil {
+		return &pb.Value{Value: [][]byte{}}, err
+	}
+
+	var targetCluster []string
+	json.Unmarshal(value, &targetCluster)
+
+	//Check if i'm not the master
+	if targetCluster[0] != address {
+		//TODO implement new master
+		log.Println("I'm not the master for:", in.GetKey())
+	}
+
+	val, _, _ := database.Get(in.GetKey())
+	return &pb.Value{Value: val}, nil
 }
 
 func propagatePut(ctx context.Context, key []byte, value [][]byte, version uint64) {
@@ -230,7 +255,6 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	log.Printf("Received: client Put(%v, %v)", in.GetKey(), in.GetValue())
 
 	ctxDht := context.Background()
-	var dbInput [][]byte
 
 	key := string(in.GetKey())
 	//Check where is stored
@@ -239,10 +263,9 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			log.Println("Not found responsible node, putting in local db....")
 			// Not found in the dht
-			dbInput = append(dbInput, in.GetValue())
-			ver, _ := database.Put(in.GetKey(), dbInput)
+			ver, _ := database.Put(in.GetKey(), in.GetValue())
 
-			propagatePut(ctx, in.GetKey(), dbInput, ver)
+			propagatePut(ctx, in.GetKey(), in.GetValue(), ver)
 
 			dhtInput, _ := json.Marshal(cluster)
 			err := kdht.PutValue(ctxDht, string(in.GetKey()), dhtInput)
@@ -275,16 +298,39 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			}
 		}
 
-		_, err = c.Put(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		_, err = c.PutInternal(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
 		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
 		}
 
 		return &pb.Ack{Msg: "Ok"}, nil
 	} else {
-		dbInput = append(dbInput, in.GetValue())
-		ver, _ := database.Put(in.GetKey(), dbInput)
-		propagatePut(ctx, in.GetKey(), dbInput, ver)
+		ver, _ := database.Put(in.GetKey(), in.GetValue())
+		propagatePut(ctx, in.GetKey(), in.GetValue(), ver)
+	}
+
+	return &pb.Ack{Msg: "Ok"}, nil
+}
+
+func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
+	key := string(in.GetKey())
+	value, err := kdht.GetValue(ctx, key)
+	if err != nil {
+		return &pb.Ack{Msg: "Err"}, err
+	}
+
+	var targetCluster []string
+	json.Unmarshal(value, &targetCluster)
+
+	//Check if i'm not the master
+	if targetCluster[0] != address {
+		//TODO implement new master
+		log.Println("I'm not the master for:", in.GetKey())
+	}
+
+	_, err = database.Put(in.GetKey(), in.GetValue())
+	if err != nil {
+		return &pb.Ack{Msg: "Err"}, err
 	}
 
 	return &pb.Ack{Msg: "Ok"}, nil
@@ -296,15 +342,13 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 
 	//Check where is stored
 	value, err := kdht.GetValue(ctx, key)
-	var dbInput [][]byte
 
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			//Not found in the dht
 
-			dbInput = append(dbInput, in.GetValue())
-			version, _ := database.Put(in.GetKey(), dbInput)
-			propagatePut(ctx, in.GetKey(), dbInput, version)
+			version, _ := database.Put(in.GetKey(), in.GetValue())
+			propagatePut(ctx, in.GetKey(), in.GetValue(), version)
 
 			//Set
 			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
@@ -327,7 +371,6 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		c, _, _ := ContactServer(targetCluster[0])
 		i := 1
 		for err != nil {
-			//TODO skip to next one in the list
 			c, _, err = ContactServer(targetCluster[i])
 			if err != nil {
 				i++

@@ -11,7 +11,7 @@ import (
 
 const (
 	serverAddress1 = "172.17.0.2:50051"
-	serverAddress2 = "172.17.0.3:50051"
+	serverAddress2 = "172.17.0.2:50051"
 )
 
 func main() {
@@ -32,10 +32,19 @@ func main() {
 	c2 := pb.NewOperationsClient(conn2)
 
 	// Contact the server and print out its response.
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	r1, err := c1.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("defa")})
+	input := make([][]byte, 1)
+
+	grr, err := c2.Get(ctx, &pb.Key{Key: []byte("abc")})
+	if err != nil {
+		log.Fatal("Get", err)
+	}
+	log.Printf("Get(\"abc\"): %s", grr.GetValue())
+
+	input[0] = []byte("defa")
+	r1, err := c1.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: input})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -47,7 +56,8 @@ func main() {
 	}
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
 
-	r3, err := c2.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("defallo")})
+	input[0] = []byte("defallo")
+	r3, err := c2.Put(ctx, &pb.KeyValue{Key: []byte("abc"), Value: input})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -61,7 +71,8 @@ func main() {
 	}
 	log.Printf("Get(\"abc\"): %s", r4.GetValue())
 
-	r1, err = c1.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: []byte("ghi")})
+	input[0] = []byte("ghi")
+	r1, err = c1.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: input})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,11 +84,12 @@ func main() {
 	}
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
 
-	r1, err = c2.Del(ctx, &pb.Key{Key: []byte("abc")})
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("Del(\"abc\"): %s", r1.GetMsg())
+	/*
+		r1, err = c2.Del(ctx, &pb.Key{Key: []byte("abc")})
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Del(\"abc\"): %s", r1.GetMsg())*/
 	r2, err = c1.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal(err)
