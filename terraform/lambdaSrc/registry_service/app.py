@@ -24,8 +24,8 @@ logger.info("SUCCESS: Connection to RDS mysql instance succeeded")
 def handler_registry(event, context):
 
     #params
-    ip = event['Ip']
-    n = event['N']
+    ip = event['ip']
+    n = event['n']
 
     ipList = []
 
