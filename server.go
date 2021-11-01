@@ -472,7 +472,10 @@ func (s *server) DeleteFromReplicas(ctx context.Context, in *pb.Key) (*pb.Ack, e
 }
 
 func (s *server) Replicate(ctx context.Context, in *pb.KeyValueVersion) (*pb.Ack, error) {
-	database.Put(in.GetKey(), in.GetValue(), in.GetVersion())
+	err := database.Replicate(in.GetKey(), in.GetValue(), in.GetVersion())
+	if err != nil {
+		return &pb.Ack{Msg: "Err"}, err
+	}
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 

@@ -42,7 +42,7 @@ func (b BadgerDB) Get(key []byte) ([][]byte, uint64, error) {
 	return slice[1:], binary.BigEndian.Uint64(slice[0]), nil
 }
 
-func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, error) {
+func (b BadgerDB) Put(key []byte, value [][]byte) (uint64, error) {
 	var versionNum uint64
 	var slice [][]byte
 
@@ -211,4 +211,12 @@ func (b BadgerDB) Del(key []byte) error {
 	}
 
 	return nil
+}
+
+func GetBadgerDb() *badger.DB {
+	badgerDB, err := badger.Open(badger.DefaultOptions("badgerDB"))
+	if err != nil {
+		panic(err)
+	}
+	return badgerDB
 }

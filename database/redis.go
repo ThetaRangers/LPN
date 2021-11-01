@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"github.com/go-redis/redis/v8"
 	"log"
-	"time"
 )
 
 type RedisDB struct {
@@ -33,29 +31,25 @@ func (r RedisDB) Get(key []byte) ([][]byte, uint64, error) {
 	return slice[1:], binary.BigEndian.Uint64(slice[0]), nil
 }
 
-func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, error) {
+func (r RedisDB) Put(key []byte, value [][]byte) (uint64, error) {
 	ctx := context.Background()
 	var versionNum uint64
+	var slice [][]byte
 
-	fmt.Println("Starting transaction")
-
-	_, err := r.Db.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
-		if len(version) != 1 {
-			var value [][]byte
-			var err2 error
-
-			value, versionNum, err2 = r.Get(key)
-			if err2 != nil {
-				return err2
-			}
-
-			if value == nil {
-				versionNum = 0
-			} else {
-				versionNum++
-			}
+	txnPut := func(tx *redis.Tx) error {
+		val, err := tx.Get(ctx, string(key)).Bytes()
+		if err == redis.Nil {
+			versionNum = 0
+		} else if err != nil {
+			return err
 		} else {
-			versionNum = version[0]
+			err = json.Unmarshal(val, &slice)
+			if err != nil {
+				return err
+			}
+
+			versionNum = binary.BigEndian.Uint64(slice[0])
+			versionNum++
 		}
 
 		entry := make([][]byte, 0)
@@ -69,20 +63,27 @@ func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, err
 			return err
 		}
 
-		err = r.Db.Set(ctx, string(key), buffer, 0).Err()
-
-		if err != nil {
-			return err
-		}
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			return pipe.Set(ctx, string(key), buffer, 0).Err()
+		})
 
 		return nil
-	})
-
-	if err != nil {
-		return 0, err
 	}
 
-	return versionNum, nil
+	// Let's just hope race conditions will not happen forever
+	for {
+		err := r.Db.Watch(ctx, txnPut, string(key))
+		if err == nil {
+			// Success.
+			return versionNum, nil
+		}
+		if err == redis.TxFailedErr {
+			// Optimistic lock lost. Retry.
+			continue
+		}
+		// Return any other error.
+		return 0, err
+	}
 }
 
 func (r RedisDB) Replicate(key []byte, value [][]byte, version uint64) error {
@@ -90,21 +91,20 @@ func (r RedisDB) Replicate(key []byte, value [][]byte, version uint64) error {
 	var versionNum uint64
 	var slice [][]byte
 
-	_, err := r.Db.TxPipelined(ctx, func(pipeline redis.Pipeliner) error {
-		val, err2 := pipeline.Get(ctx, string(key)).Bytes()
+	txnPut := func(tx *redis.Tx) error {
+		val, err := tx.Get(ctx, string(key)).Bytes()
 
-		if err2 != nil && err2 != redis.Nil {
-			return err2
-		} else if err2 != redis.Nil {
+		if err != nil && err != redis.Nil {
+			return err
+		} else if err != redis.Nil {
 
-			err2 = json.Unmarshal(val, &slice)
-			if err2 != nil {
-				return err2
+			err = json.Unmarshal(val, &slice)
+			if err != nil {
+				return err
 			}
 
 			versionNum = binary.BigEndian.Uint64(slice[0])
 
-			// Replica does this
 			if versionNum > version {
 				// Replica has the newer value
 				return nil
@@ -124,20 +124,27 @@ func (r RedisDB) Replicate(key []byte, value [][]byte, version uint64) error {
 			return err
 		}
 
-		err = r.Db.Set(ctx, string(key), buffer, 0).Err()
-
-		if err != nil {
-			return err
-		}
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			return pipe.Set(ctx, string(key), buffer, 0).Err()
+		})
 
 		return nil
-	})
-
-	if err != nil {
-		return err
 	}
 
-	return nil
+	// Let's just hope race conditions will not happen forever
+	for {
+		err := r.Db.Watch(ctx, txnPut, string(key))
+		if err == nil {
+			// Success.
+			return nil
+		}
+		if err == redis.TxFailedErr {
+			// Optimistic lock lost. Retry.
+			continue
+		}
+		// Return any other error.
+		return err
+	}
 }
 
 func (r RedisDB) Append(key []byte, value [][]byte) ([][]byte, uint64, error) {
@@ -146,8 +153,8 @@ func (r RedisDB) Append(key []byte, value [][]byte) ([][]byte, uint64, error) {
 	var versionNumber uint64
 	var num = make([]byte, 8)
 
-	_, err := r.Db.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		val, err := pipe.Get(ctx, string(key)).Bytes()
+	txnPut := func(tx *redis.Tx) error {
+		val, err := tx.Get(ctx, string(key)).Bytes()
 		if err != nil {
 			return err
 		}
@@ -168,20 +175,27 @@ func (r RedisDB) Append(key []byte, value [][]byte) ([][]byte, uint64, error) {
 		slice = append(slice, value...)
 		buffer, err := json.Marshal(slice)
 
-		err = pipe.Set(ctx, string(key), buffer, 0).Err()
-		if err != nil {
-			return err
-		}
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			return pipe.Set(ctx, string(key), buffer, 0).Err()
+		})
 
-		pipe.Expire(ctx, "tx_pipelined_counter", time.Hour)
 		return nil
-	})
-
-	if err != nil {
-		return nil, 0, nil
 	}
 
-	return slice[1:], versionNumber, nil
+	for {
+		err := r.Db.Watch(ctx, txnPut, string(key))
+		if err == nil {
+			// Success.
+			return slice[1:], versionNumber, nil
+		}
+		if err == redis.TxFailedErr {
+			// Optimistic lock lost. Retry.
+			continue
+		}
+		// Return any other error.
+		return nil, 0, err
+	}
+
 }
 
 func (r RedisDB) Del(key []byte) error {

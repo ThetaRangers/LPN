@@ -3,7 +3,6 @@ package utils
 import (
 	db "SDCC/database"
 	"encoding/json"
-	"github.com/dgraph-io/badger"
 	"log"
 	"os"
 	"time"
@@ -13,7 +12,7 @@ const (
 	AwsRegion   = "us-east-1"
 	Replicas    = 4
 	N           = Replicas + 1
-	WriteQuorum = N/2 + 1
+	WriteQuorum = N / 2 + 1
 	ReadQuorum  = N / 2
 	Timeout     = 5 * time.Second
 )
@@ -46,11 +45,7 @@ func GetConfiguration() Configuration {
 
 	var database db.Database
 	if parser.Database == "badger" {
-		badgerDB, err := badger.Open(badger.DefaultOptions("badgerDB"))
-		if err != nil {
-			log.Fatal(err)
-		}
-		database = db.BadgerDB{Db: badgerDB}
+		database = db.BadgerDB{Db: db.GetBadgerDb()}
 	} else if parser.Database == "redis" {
 		database = db.RedisDB{Db: db.ConnectToRedis()}
 	} else {
