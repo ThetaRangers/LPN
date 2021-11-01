@@ -52,6 +52,7 @@ resource "aws_db_subnet_group" "subnetTerraform" {
   }
 }
 
+#RDS instance
 resource "aws_db_instance" "registryDB" {
   identifier = "registry"
   allocated_storage    = 5
@@ -134,6 +135,7 @@ resource "aws_iam_role_policy_attachment" "policyattach" {
   policy_arn = aws_iam_policy.lambda_policy.arn
 }
 
+#Setup DB lambda
 resource "aws_lambda_function" "setupDB" {
    function_name = "LambdaDB"
    filename      = "rds_setup.zip"
@@ -157,6 +159,7 @@ resource "aws_lambda_function" "setupDB" {
   }
 }
 
+#Reg service lambda
 resource "aws_lambda_function" "regService" {
   function_name = "RegService"
   filename = "registry_service.zip"
@@ -179,4 +182,83 @@ resource "aws_lambda_function" "regService" {
       db_name = aws_db_instance.registryDB.name
     }
   } 
+}
+
+#DynamoDB for cloud storage
+resource "aws_dynamodb_table" "cloud_storage" {
+  name = "cloud_storage"
+  read_capacity = 20
+  write_capacity = 20
+  hash_key = "Key"
+
+  attribute {
+    name = "Key"
+    type = "S"
+  }
+}
+
+#Client lambda
+resource "aws_lambda_function" "allIP" {
+  function_name = "ClientFunc"
+  filename      = "client.zip"
+
+  handler = "app.client_handler"
+  runtime = "python3.8"
+
+  role = aws_iam_role.iam_for_lambda.arn
+
+  vpc_config {
+    subnet_ids = module.vpc.public_subnets
+    security_group_ids = [aws_security_group.secGroup.id]
+  }
+  environment {
+    variables = {
+      rds_endpoint = aws_db_instance.registryDB.endpoint
+      db_username = var.db_username
+      db_password = var.db_password
+      db_name = aws_db_instance.registryDB.name
+    }
+  }
+}
+
+#Gateway
+resource "aws_api_gateway_rest_api" "API" {
+  name        = "API"
+  description = "API gateway"
+}
+
+resource "aws_api_gateway_resource" "Resource" {
+  rest_api_id = aws_api_gateway_rest_api.API.id
+  parent_id   = aws_api_gateway_rest_api.API.root_resource_id
+  path_part   = "nodesIP"
+}
+
+resource "aws_api_gateway_method" "Method" {
+  rest_api_id   = aws_api_gateway_rest_api.API.id
+  resource_id   = aws_api_gateway_resource.Resource.id
+  http_method   = "ANY"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "integration" {
+  rest_api_id             = aws_api_gateway_rest_api.API.id
+  resource_id             = aws_api_gateway_resource.Resource.id
+  http_method             = aws_api_gateway_method.Method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.allIP.invoke_arn
+}
+
+resource "aws_lambda_permission" "apigw_lambda" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.allIP.arn
+  principal     = "apigateway.amazonaws.com"
+
+  source_arn = "${aws_api_gateway_rest_api.API.execution_arn}/*/*"
+}
+resource "aws_api_gateway_deployment" "dev" {
+  depends_on = [aws_api_gateway_integration.integration]
+  rest_api_id = aws_api_gateway_rest_api.API.id
+  stage_name = "dev"
 }

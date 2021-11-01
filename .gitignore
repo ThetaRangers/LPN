@@ -22,7 +22,6 @@ badgerDB/
 
 # Compilation output
 server
-client
 
 # Terraform output
 terraform/.terraform*

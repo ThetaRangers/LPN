@@ -1,11 +1,11 @@
 import sys
 import os
+import json
 import logging
 import pymysql
 from statement import *
 
-
-def handler_setup(event, context):
+def client_handler(event, context):
 
     #rds settings
     rds_host, rds_port  = os.environ['rds_endpoint'].split(":")
@@ -25,13 +25,18 @@ def handler_setup(event, context):
 
     logger.info("SUCCESS: Connection to RDS mysql instance succeeded")
 
+    ipList = []
     with conn.cursor() as cur:
-        
-        for x in allOp:
-            cur.execute(x)
+        cur.execute(getIP)
+        rows = cur.fetchall()
+        for row in rows:
+            ipList.append(f'{row[0]}')
+            print(f'{row[0]}')
+
+    json_data = {"ipList": ipList}
 
     conn.close()
-        
+
     return {"statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": "\"DB setted correctly\""         }
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps(json_data)}

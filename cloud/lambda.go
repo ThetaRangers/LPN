@@ -3,14 +3,12 @@ package cloud
 import (
 	"SDCC/utils"
 	"encoding/json"
-	_ "encoding/json"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/opentracing/opentracing-go/log"
 	"strconv"
-	_ "strconv"
 )
 
 type RequestNetwork struct {
@@ -82,12 +80,18 @@ func RegisterStub(ip, network string, n int, region string) []string {
 }
 
 func main() {
-
-	ret := RegisterToTheNetwork("ip3", "ip3str", 2, "us-east-1")
-	fmt.Printf("crashed %d valid %d list\n", ret.Crashed, ret.Valid)
-	for i := 0; i < len(ret.IpList); i++ {
-		r := ret.IpList[i]
-		fmt.Printf("ip %s ip string %s\n", r.Ip, r.IpString)
+	var ip string
+	var ipStr string
+	for i := 7; i < 10; i++ {
+		ip = fmt.Sprintf("ip%d", i)
+		ipStr = fmt.Sprintf("ip%dstr", i)
+		ret := RegisterToTheNetwork(ip, ipStr, 2, "us-east-1")
+		fmt.Printf("ip %s ipStr %s\n", ip, ipStr)
+		fmt.Printf("crashed %d valid %d list\n", ret.Crashed, ret.Valid)
+		for j := 0; j < len(ret.IpList); j++ {
+			r := ret.IpList[j]
+			fmt.Printf("repIp %s RepIpString %s\n", r.Ip, r.IpString)
+		}
 	}
 
 	/*TODO order to parse:

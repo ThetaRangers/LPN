@@ -97,7 +97,7 @@ func createTable(svc *dynamodb.DynamoDB, tableName string) {
 	fmt.Println("Created the table", tableName)
 }
 
-//Override value for existing key
+//PutItem Override value for existing key
 func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value []string) {
 	newItem := Item{key, value}
 	av, err := dynamodbattribute.MarshalMap(newItem)
