@@ -44,22 +44,27 @@ func (b BadgerDB) Get(key []byte) ([][]byte, uint64, error) {
 
 func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, error) {
 	var versionNum uint64
+	var slice [][]byte
+
 	err := b.Db.Update(func(txn *badger.Txn) error {
 		var err2 error
-		if len(version) != 1 {
-			var value [][]byte
-			value, versionNum, err2 = b.Get(key)
+		item, err2 := txn.Get(key)
+		if err2 == badger.ErrKeyNotFound {
+			versionNum = 0
+		} else if err2 != nil {
+			return err2
+		} else {
+			valCopy, err2 := item.ValueCopy(nil)
+			if err2 != nil {
+				return err2
+			}
+			err2 = json.Unmarshal(valCopy, &slice)
 			if err2 != nil {
 				return err2
 			}
 
-			if value == nil {
-				versionNum = 0
-			} else {
-				versionNum++
-			}
-		} else {
-			versionNum = version[0]
+			versionNum = binary.BigEndian.Uint64(slice[0])
+			versionNum++
 		}
 		entry := make([][]byte, 0)
 		bytes := make([]byte, 8)
@@ -84,6 +89,60 @@ func (b BadgerDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, er
 	return versionNum, nil
 }
 
+func (b BadgerDB) Replicate(key []byte, value [][]byte, version uint64) error {
+	var versionNum uint64
+	var slice [][]byte
+
+	err := b.Db.Update(func(txn *badger.Txn) error {
+		var err2 error
+		item, err2 := txn.Get(key)
+		if err2 != nil && err2 != badger.ErrKeyNotFound {
+			return err2
+		} else if err2 != badger.ErrKeyNotFound {
+			valCopy, err2 := item.ValueCopy(nil)
+			if err2 != nil {
+				return err2
+			}
+
+			err2 = json.Unmarshal(valCopy, &slice)
+			if err2 != nil {
+				return err2
+			}
+
+			versionNum = binary.BigEndian.Uint64(slice[0])
+
+			// Replica does this
+			if versionNum > version {
+				// Replica has the newer value
+				return nil
+			}
+		}
+
+		versionNum = version
+
+		entry := make([][]byte, 0)
+		bytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(bytes, versionNum)
+		entry = append(entry, bytes)
+		entry = append(entry, value...)
+
+		var buffer []byte
+		buffer, err := json.Marshal(entry)
+		if err != nil {
+			log.Fatal(err)
+		}
+		e := badger.NewEntry(key, buffer)
+		err = txn.SetEntry(e)
+		return err
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (b BadgerDB) Append(key []byte, value [][]byte) ([][]byte, uint64, error) {
 	var versionNumber uint64
 	var valCopy []byte
@@ -101,8 +160,9 @@ func (b BadgerDB) Append(key []byte, value [][]byte) ([][]byte, uint64, error) {
 
 		valCopy, err = item.ValueCopy(nil)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
+
 		if len(valCopy) != 0 {
 			err = json.Unmarshal(valCopy, &slice)
 			if err != nil {

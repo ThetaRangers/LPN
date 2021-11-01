@@ -478,10 +478,12 @@ func (s *server) Replicate(ctx context.Context, in *pb.KeyValueVersion) (*pb.Ack
 
 func callReplicate(ctx context.Context, ip string, key []byte, value [][]byte, version uint64) {
 	c, _, _ := ContactServer(ip)
+
 	ack, err := c.Replicate(ctx, &pb.KeyValueVersion{Key: key, Value: value, Version: version})
 	if err != nil {
 		return
 	}
+
 	if ack.GetMsg() != "Ok" {
 		// TODO
 		log.Println("Ack Not OK")

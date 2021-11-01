@@ -70,19 +70,74 @@ func (r RedisDB) Put(key []byte, value [][]byte, version ...uint64) (uint64, err
 		}
 
 		err = r.Db.Set(ctx, string(key), buffer, 0).Err()
-		fmt.Println("Set data")
+
 		if err != nil {
 			return err
 		}
 
 		return nil
 	})
-	fmt.Println("Ending transaction")
+
 	if err != nil {
 		return 0, err
 	}
 
 	return versionNum, nil
+}
+
+func (r RedisDB) Replicate(key []byte, value [][]byte, version uint64) error {
+	ctx := context.Background()
+	var versionNum uint64
+	var slice [][]byte
+
+	_, err := r.Db.TxPipelined(ctx, func(pipeline redis.Pipeliner) error {
+		val, err2 := pipeline.Get(ctx, string(key)).Bytes()
+
+		if err2 != nil && err2 != redis.Nil {
+			return err2
+		} else if err2 != redis.Nil {
+
+			err2 = json.Unmarshal(val, &slice)
+			if err2 != nil {
+				return err2
+			}
+
+			versionNum = binary.BigEndian.Uint64(slice[0])
+
+			// Replica does this
+			if versionNum > version {
+				// Replica has the newer value
+				return nil
+			}
+		}
+
+		versionNum = version
+
+		entry := make([][]byte, 0)
+		bytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(bytes, versionNum)
+		entry = append(entry, bytes)
+		entry = append(entry, value...)
+
+		buffer, err := json.Marshal(entry)
+		if err != nil {
+			return err
+		}
+
+		err = r.Db.Set(ctx, string(key), buffer, 0).Err()
+
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r RedisDB) Append(key []byte, value [][]byte) ([][]byte, uint64, error) {
@@ -139,16 +194,6 @@ func (r RedisDB) Del(key []byte) error {
 
 	return nil
 }
-
-/*
-func (r RedisDB) Replicate(key []byte) {
-	ctx := context.Background()
-
-	err := r.Db.Del(ctx, string(key)).Err()
-	if err != nil {
-		log.Fatal(err)
-	}
-}*/
 
 func ConnectToRedis() *redis.Client {
 
