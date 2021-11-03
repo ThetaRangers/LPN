@@ -41,3 +41,6 @@ tfplan
 
 # RDS username and password
 terraform/db_credentials.tfvars
+
+# Aws credentials for container
+.aws

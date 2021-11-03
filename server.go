@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/multiformats/go-multiaddr"
@@ -24,6 +25,7 @@ import (
 const (
 	port = ":50051"
 	mask = "172.17.0.0/24"
+	regService = false
 )
 
 type Config struct {
@@ -620,26 +622,12 @@ func main() {
 		}
 	}
 
-	replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
-	for len(replicaSet) != utils.Replicas {
-		log.Println("Waiting for replicas to connect...")
-		time.Sleep(60 * time.Second)
-		replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
-	}
-
-	cluster = make([]string, 0)
-	cluster = append(cluster, ip.String())
-	cluster = append(cluster, replicaSet...)
-
 	// Initialize logging channel
 	channel = make(chan migration.KeyOp, 200)
 	go migration.ManagementThread(channel, utils.CostRead, utils.CostWrite, utils.MigrationWindowMinutes)
 
 	// Initialize migration thread
 	go migrationThread(context.Background())
-
-	log.Println("Replicas found: ", replicaSet)
-	log.Println("Cluster: ", cluster)
 
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
@@ -675,11 +663,54 @@ func main() {
 		log.Fatal(err)
 	}
 
+	var addrString string
 	log.Printf("Host ID: %s", h.ID().Pretty())
 	log.Printf("DHT addresses:")
 	for _, addr := range h.Addrs() {
 		log.Printf("  %s/p2p/%s", addr, h.ID().Pretty())
+		if strings.Contains(addr.String(), ip.String()) {
+			addrString = addr.String()
+		}
 	}
+
+	if regService {
+		// TODO maybe add support for ip6
+		ipStr := fmt.Sprintf("%s/p2p/%s", addrString, h.ID().Pretty())
+		ret := cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.Replicas, utils.AwsRegion)
+		fmt.Println(ipStr)
+		if ret.Crashed == 1 {
+			// TODO resurrect
+			//h.ID() =
+		}
+		for ret.Valid != 1 {
+			log.Println("Waiting for replicas to connect...")
+			time.Sleep(30 * time.Second)
+			ret = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.Replicas, utils.AwsRegion)
+		}
+		for j := 0; j < len(ret.IpList); j++ {
+			r := ret.IpList[j]
+			replicaSet = append(replicaSet, r.Ip)
+			err := config.BootstrapPeers.Set(r.IpString)
+			if err != nil {
+				panic(err)
+			}
+		}
+	} else {
+		replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
+		for len(replicaSet) != utils.Replicas {
+			log.Println("Waiting for replicas to connect...")
+			time.Sleep(60 * time.Second)
+			replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
+		}
+	}
+
+	cluster = make([]string, 0)
+	cluster = append(cluster, ip.String())
+	cluster = append(cluster, replicaSet...)
+
+	log.Println("Replicas found: ", replicaSet)
+	log.Println("Cluster: ", cluster)
+
 
 	kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
 	kdht.Validator = NullValidator{}
