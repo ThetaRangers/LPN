@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/multiformats/go-multiaddr"
@@ -167,7 +166,6 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	log.Printf("Received: Get(%v)", in.GetKey())
 	key := string(in.GetKey())
 
-	channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation}
 	value, err := kdht.GetValue(ctx, key)
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
@@ -182,6 +180,8 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	json.Unmarshal(value, &targetCluster)
 
 	if targetCluster[0] != address {
+		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.External}
+
 		// Try node list
 		c, _, err := ContactServer(targetCluster[0])
 		i := 1
@@ -201,8 +201,9 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
 
 	} else {
-		value, versionNum, _ := database.Get(in.GetKey())
-		fmt.Println("Version:", versionNum)
+		value, _, _ := database.Get(in.GetKey())
+		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.Master}
+
 		return &pb.Value{Value: value}, nil
 	}
 }
@@ -259,13 +260,12 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	ctxDht := context.Background()
 	key := string(in.GetKey())
 
-	channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation}
-
 	//Check where is stored
 	value, err := kdht.GetValue(ctxDht, key)
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			log.Println("Not found responsible node, putting in local db....")
+			channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 			// Not found in the dht
 			ver, _ := database.Put(in.GetKey(), in.GetValue())
 
@@ -290,6 +290,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	// If not the master
 	if targetCluster[0] != address {
 		//Connect to remote ip
+		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
 		c, _, err := ContactServer(targetCluster[0])
 		i := 1
 		for err != nil {
@@ -309,6 +310,8 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 
 		return &pb.Ack{Msg: "Ok"}, nil
 	} else {
+		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
+
 		ver, _ := database.Put(in.GetKey(), in.GetValue())
 		propagatePut(ctx, in.GetKey(), in.GetValue(), ver)
 	}
@@ -343,7 +346,6 @@ func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, err
 // Append i i no green pass
 func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	key := string(in.GetKey())
-	channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation}
 
 	//Check where is stored
 	value, err := kdht.GetValue(ctx, key)
@@ -351,6 +353,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			//Not found in the dht
+			channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 
 			version, _ := database.Put(in.GetKey(), in.GetValue())
 			propagatePut(ctx, in.GetKey(), in.GetValue(), version)
@@ -373,6 +376,8 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	//Found in the dht
 	if targetCluster[0] != address {
 		//Connect to remote ip
+		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
+
 		c, _, _ := ContactServer(targetCluster[0])
 		i := 1
 		for err != nil {
@@ -388,6 +393,8 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			return &pb.Ack{Msg: "Connection error"}, nil
 		}
 	} else {
+		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
+
 		dbRes, versions, _ := database.Append(in.GetKey(), in.GetValue())
 		propagatePut(ctx, in.GetKey(), dbRes, versions)
 	}
@@ -484,6 +491,36 @@ func (s *server) Replicate(ctx context.Context, in *pb.KeyValueVersion) (*pb.Ack
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
+func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, error) {
+	keyBytes := in.GetKey()
+	k := string(keyBytes)
+
+	cost := uint64(migration.GetCostMaster(k, time.Now()))
+
+	if cost < in.Cost {
+		// Do migration
+		value, version, err := database.Get(keyBytes)
+		if err != nil {
+			return &pb.Outcome{Out: false}, nil
+		}
+
+		// Remove from db
+		database.Del(keyBytes)
+		migration.SetExported(k)
+
+		// Remove from replicas
+		for _, replicaAddr := range cluster {
+			client, _, _ := ContactServer(replicaAddr)
+			client.DeleteFromReplicas(ctx, &pb.Key{Key: in.GetKey()})
+		}
+
+		return &pb.Outcome{Out: true, Value: value, Version: version}, nil
+	} else {
+		// Do nothing
+		return &pb.Outcome{Out: false}, nil
+	}
+}
+
 func callReplicate(ctx context.Context, ip string, key []byte, value [][]byte, version uint64) {
 	c, _, _ := ContactServer(ip)
 
@@ -511,6 +548,49 @@ func init() {
 }
 
 var kdht *dht.IpfsDHT
+
+func migrationThread(ctx context.Context) {
+	for {
+		migrationKeys := migration.EvaluateMigration()
+
+		for _, k := range migrationKeys {
+			value, err := kdht.GetValue(ctx, k)
+			if err != nil {
+				continue
+			}
+
+			var targetCluster []string
+			json.Unmarshal(value, &targetCluster)
+
+			// Try to contact server
+			c, _, err := ContactServer(targetCluster[0])
+			if err != nil {
+				continue
+			}
+
+			outcome, err := c.Migration(ctx, &pb.KeyCost{Key: []byte(k), Cost: uint64(migration.GetCostExternal(k, time.Now()))})
+			if err != nil || !outcome.Out {
+				continue
+			}
+
+			// Do migration
+			val := outcome.Value
+			migration.SetMigrated(k)
+			err = database.Replicate([]byte(k), val, outcome.Version)
+			if err != nil {
+				return
+			}
+
+			propagatePut(ctx, []byte(k), val, outcome.Version)
+
+			// Modify dht
+			dhtInput, _ := json.Marshal(cluster)
+			err = kdht.PutValue(ctx, k, dhtInput)
+		}
+
+		time.Sleep(10 * time.Second)
+	}
+}
 
 func main() {
 	//Get ip address
@@ -554,6 +634,9 @@ func main() {
 	// Initialize logging channel
 	channel = make(chan migration.KeyOp, 200)
 	go migration.ManagementThread(channel, utils.CostRead, utils.CostWrite, utils.MigrationWindowMinutes)
+
+	// Initialize migration thread
+	go migrationThread(context.Background())
 
 	log.Println("Replicas found: ", replicaSet)
 	log.Println("Cluster: ", cluster)

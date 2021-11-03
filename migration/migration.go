@@ -1,7 +1,6 @@
 package migration
 
 import (
-	"log"
 	"time"
 )
 
@@ -9,13 +8,20 @@ var costRead = 1
 var costWrite = 2
 var windowLength = 10 * time.Minute
 
+var migrationThreashold = 10
+
 const (
 	ReadOperation  = 0
 	WriteOperation = 1
+	Master         = 0
+	Replica        = 1
+	External       = 2
 )
 
 // Does not require synchronization because it's called by a single thread
-var m = make(map[string][]TimeOp)
+var master = make(map[string][]TimeOp)
+var replica = make(map[string][]TimeOp)
+var external = make(map[string][]TimeOp)
 
 type TimeOp struct {
 	time time.Time
@@ -23,19 +29,28 @@ type TimeOp struct {
 }
 
 type KeyOp struct {
-	Key string
-	Op  int
+	Key  string
+	Op   int
+	Mode int
 }
 
-func SetRead(key string) {
-	updateAndEvaluate(key, costRead)
+func SetRead(key string, m map[string][]TimeOp) {
+	updateAndEvaluate(key, costRead, m)
 }
 
-func SetWrite(key string) {
-	updateAndEvaluate(key, costWrite)
+func SetWrite(key string, m map[string][]TimeOp) {
+	updateAndEvaluate(key, costWrite, m)
 }
 
-func updateAndEvaluate(key string, cost int) {
+func SetMigrated(key string) {
+	master[key] = external[key]
+}
+
+func SetExported(key string) {
+	external[key] = master[key]
+}
+
+func updateAndEvaluate(key string, cost int, m map[string][]TimeOp) {
 	slice := m[key]
 	now := time.Now()
 	current := TimeOp{time: now, cost: cost}
@@ -50,7 +65,15 @@ func updateAndEvaluate(key string, cost int) {
 	}
 }
 
-func GetCost(key string, now time.Time) int {
+func GetCostMaster(key string, now time.Time) int {
+	return GetCost(key, now, master)
+}
+
+func GetCostExternal(key string, now time.Time) int {
+	return GetCost(key, now, external)
+}
+
+func GetCost(key string, now time.Time, m map[string][]TimeOp) int {
 	slice := m[key]
 	var cost int
 	if len(slice) == 0 {
@@ -63,6 +86,22 @@ func GetCost(key string, now time.Time) int {
 	}
 
 	return cost
+}
+
+func EvaluateMigration() []string {
+	migrationKeys := make([]string, 0)
+	now := time.Now()
+
+	for k, _ := range external {
+		cost := GetCostExternal(k, now)
+
+		// Find max cost
+		if cost > migrationThreashold {
+			migrationKeys = append(migrationKeys, k)
+		}
+	}
+
+	return migrationKeys
 }
 
 func deleteExpired(input []TimeOp, now time.Time) []TimeOp {
@@ -106,8 +145,13 @@ func deleteExpired(input []TimeOp, now time.Time) []TimeOp {
 	return input[index:]
 }
 
+func Evaluate() {
+
+}
+
 func ManagementThread(channel chan KeyOp, costR int, costW int, windowMinutes int) {
 	var op KeyOp
+	var m map[string][]TimeOp
 
 	costRead = costR
 	costWrite = costW
@@ -116,18 +160,24 @@ func ManagementThread(channel chan KeyOp, costR int, costW int, windowMinutes in
 	for {
 		op = <-channel
 
+		switch op.Mode {
+		case Master:
+			m = master
+			break
+		case Replica:
+			m = replica
+			break
+		case External:
+			m = external
+		}
+
 		switch op.Op {
 		case ReadOperation:
-			SetRead(op.Key)
+			SetRead(op.Key, m)
 			break
 		case WriteOperation:
-			SetWrite(op.Key)
+			SetWrite(op.Key, m)
 			break
 		}
-
-		for k, _ := range m {
-			log.Println("Cost for: ", k, GetCost(k, time.Now()))
-		}
-
 	}
 }

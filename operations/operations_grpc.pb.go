@@ -28,6 +28,7 @@ type OperationsClient interface {
 	DelInternal(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error)
 	Replicate(ctx context.Context, in *KeyValueVersion, opts ...grpc.CallOption) (*Ack, error)
 	DeleteFromReplicas(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error)
+	Migration(ctx context.Context, in *KeyCost, opts ...grpc.CallOption) (*Outcome, error)
 }
 
 type operationsClient struct {
@@ -128,6 +129,15 @@ func (c *operationsClient) DeleteFromReplicas(ctx context.Context, in *Key, opts
 	return out, nil
 }
 
+func (c *operationsClient) Migration(ctx context.Context, in *KeyCost, opts ...grpc.CallOption) (*Outcome, error) {
+	out := new(Outcome)
+	err := c.cc.Invoke(ctx, "/operations.Operations/Migration", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OperationsServer is the server API for Operations service.
 // All implementations must embed UnimplementedOperationsServer
 // for forward compatibility
@@ -142,6 +152,7 @@ type OperationsServer interface {
 	DelInternal(context.Context, *Key) (*Ack, error)
 	Replicate(context.Context, *KeyValueVersion) (*Ack, error)
 	DeleteFromReplicas(context.Context, *Key) (*Ack, error)
+	Migration(context.Context, *KeyCost) (*Outcome, error)
 	mustEmbedUnimplementedOperationsServer()
 }
 
@@ -178,6 +189,9 @@ func (UnimplementedOperationsServer) Replicate(context.Context, *KeyValueVersion
 }
 func (UnimplementedOperationsServer) DeleteFromReplicas(context.Context, *Key) (*Ack, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteFromReplicas not implemented")
+}
+func (UnimplementedOperationsServer) Migration(context.Context, *KeyCost) (*Outcome, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Migration not implemented")
 }
 func (UnimplementedOperationsServer) mustEmbedUnimplementedOperationsServer() {}
 
@@ -372,6 +386,24 @@ func _Operations_DeleteFromReplicas_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Operations_Migration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KeyCost)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationsServer).Migration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/operations.Operations/Migration",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationsServer).Migration(ctx, req.(*KeyCost))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Operations_ServiceDesc is the grpc.ServiceDesc for Operations service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -418,6 +450,10 @@ var Operations_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteFromReplicas",
 			Handler:    _Operations_DeleteFromReplicas_Handler,
+		},
+		{
+			MethodName: "Migration",
+			Handler:    _Operations_Migration_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

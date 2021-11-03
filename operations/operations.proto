@@ -15,6 +15,7 @@ service Operations {
   rpc DelInternal (Key) returns (Ack) {}
   rpc Replicate (KeyValueVersion) returns (Ack) {}
   rpc DeleteFromReplicas (Key) returns (Ack) {}
+  rpc Migration (KeyCost) returns (Outcome) {}
 }
 
 message Key {
@@ -38,4 +39,15 @@ message KeyValueVersion {
 
 message Ack {
   string msg = 1;
+}
+
+message KeyCost {
+  bytes key = 1;
+  uint64 cost = 2;
+}
+
+message Outcome {
+  bool out = 1;
+  repeated bytes value = 2;
+  uint64 version = 3;
 }
