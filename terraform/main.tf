@@ -262,3 +262,51 @@ resource "aws_api_gateway_deployment" "dev" {
   rest_api_id = aws_api_gateway_rest_api.API.id
   stage_name = "dev"
 }
+
+
+#DebugLambda
+resource "aws_lambda_function" "getAll" {
+  function_name = "printAll"
+  filename      = "print_all.zip"
+
+  handler = "app.handler_print"
+  runtime = "python3.8"
+
+  role = aws_iam_role.iam_for_lambda.arn
+
+  vpc_config {
+    subnet_ids = module.vpc.public_subnets
+    security_group_ids = [aws_security_group.secGroup.id]
+  }
+  environment {
+    variables = {
+      rds_endpoint = aws_db_instance.registryDB.endpoint
+      db_username = var.db_username
+      db_password = var.db_password
+      db_name = aws_db_instance.registryDB.name
+    }
+  }
+}
+
+resource "aws_lambda_function" "clearAll" {
+  function_name = "clearAll"
+  filename      = "clear_all.zip"
+
+  handler = "app.handler_clear"
+  runtime = "python3.8"
+
+  role = aws_iam_role.iam_for_lambda.arn
+
+  vpc_config {
+    subnet_ids = module.vpc.public_subnets
+    security_group_ids = [aws_security_group.secGroup.id]
+  }
+  environment {
+    variables = {
+      rds_endpoint = aws_db_instance.registryDB.endpoint
+      db_username = var.db_username
+      db_password = var.db_password
+      db_name = aws_db_instance.registryDB.name
+    }
+  }
+}

@@ -31,6 +31,9 @@ BEGIN
     -- add Node if not exists
    insert ignore into Nodes (nodeIP, ipString, replicaCount) values (myIP, ipStr, 0);
 
+   -- update ipStr
+   update Nodes set ipString = ipStr where nodeIP = myIP;
+
    -- check node number for replication
    select count(nodeIP)
    from Nodes
