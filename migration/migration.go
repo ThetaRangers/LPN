@@ -1,13 +1,18 @@
-package main
+package migration
 
 import (
-	"fmt"
+	"log"
 	"time"
 )
 
 var costRead = 1
 var costWrite = 2
-var windowLenght = 10 * time.Minute
+var windowLength = 10 * time.Minute
+
+const (
+	ReadOperation  = 0
+	WriteOperation = 1
+)
 
 // Does not require synchronization because it's called by a single thread
 var m = make(map[string][]TimeOp)
@@ -15,6 +20,11 @@ var m = make(map[string][]TimeOp)
 type TimeOp struct {
 	time time.Time
 	cost int
+}
+
+type KeyOp struct {
+	Key string
+	Op  int
 }
 
 func SetRead(key string) {
@@ -38,7 +48,6 @@ func updateAndEvaluate(key string, cost int) {
 	} else {
 		m[key] = append(deleteExpired(slice, now), current)
 	}
-
 }
 
 func GetCost(key string, now time.Time) int {
@@ -49,7 +58,6 @@ func GetCost(key string, now time.Time) int {
 	}
 
 	slice = deleteExpired(slice, now)
-	fmt.Println(slice)
 	for _, x := range slice {
 		cost += x.cost
 	}
@@ -61,11 +69,11 @@ func deleteExpired(input []TimeOp, now time.Time) []TimeOp {
 	tmp := input
 	var p int
 
-	windowStart := now.Add(-windowLenght)
+	windowStart := now.Add(-windowLength)
 	//windowStart := now
 
 	index := 0
-	for true {
+	for {
 		if len(tmp) == 0 {
 			break
 		}
@@ -98,10 +106,28 @@ func deleteExpired(input []TimeOp, now time.Time) []TimeOp {
 	return input[index:]
 }
 
-func main() {
-	SetRead("a")
-	SetWrite("a")
+func ManagementThread(channel chan KeyOp, costR int, costW int, windowMinutes int) {
+	var op KeyOp
 
-	fmt.Println(GetCost("a", time.Now()))
+	costRead = costR
+	costWrite = costW
+	windowLength = time.Minute * time.Duration(windowMinutes)
 
+	for {
+		op = <-channel
+
+		switch op.Op {
+		case ReadOperation:
+			SetRead(op.Key)
+			break
+		case WriteOperation:
+			SetWrite(op.Key)
+			break
+		}
+
+		for k, _ := range m {
+			log.Println("Cost for: ", k, GetCost(k, time.Now()))
+		}
+
+	}
 }

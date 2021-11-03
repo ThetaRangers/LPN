@@ -4,6 +4,7 @@ import (
 	"SDCC/cloud"
 	db "SDCC/database"
 	"SDCC/ipfs"
+	"SDCC/migration"
 	pb "SDCC/operations"
 	"SDCC/utils"
 	"context"
@@ -45,6 +46,7 @@ var cluster []string
 var database db.Database
 var ip net.IP
 var address string
+var channel chan migration.KeyOp
 
 func (al *addrList) String() string {
 	strs := make([]string, len(*al))
@@ -164,14 +166,14 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	//Request from the client
 	log.Printf("Received: Get(%v)", in.GetKey())
 	key := string(in.GetKey())
+
+	channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation}
 	value, err := kdht.GetValue(ctx, key)
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			//Not found in the dht
-			log.Println("Not Found in the dht")
 			return &pb.Value{Value: [][]byte{}}, nil
 		} else {
-			log.Println("Orrore")
 			return &pb.Value{Value: [][]byte{}}, err
 		}
 	}
@@ -255,8 +257,10 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	log.Printf("Received: client Put(%v, %v)", in.GetKey(), in.GetValue())
 
 	ctxDht := context.Background()
-
 	key := string(in.GetKey())
+
+	channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation}
+
 	//Check where is stored
 	value, err := kdht.GetValue(ctxDht, key)
 	if err != nil {
@@ -339,6 +343,7 @@ func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, err
 // Append i i no green pass
 func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	key := string(in.GetKey())
+	channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation}
 
 	//Check where is stored
 	value, err := kdht.GetValue(ctx, key)
@@ -545,6 +550,10 @@ func main() {
 	cluster = make([]string, 0)
 	cluster = append(cluster, ip.String())
 	cluster = append(cluster, replicaSet...)
+
+	// Initialize logging channel
+	channel = make(chan migration.KeyOp, 200)
+	go migration.ManagementThread(channel, utils.CostRead, utils.CostWrite, utils.MigrationWindowMinutes)
 
 	log.Println("Replicas found: ", replicaSet)
 	log.Println("Cluster: ", cluster)
