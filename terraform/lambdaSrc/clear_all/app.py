@@ -28,5 +28,6 @@ def handler_clear(event, context):
         cur.execute(clearNodes)
 
         json_data = { }
+    conn.commit()
     conn.close()
     return json_data

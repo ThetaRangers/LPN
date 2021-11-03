@@ -1,8 +1,8 @@
 createNodeTable = "create table IF NOT EXISTS Nodes (nodeIP varchar(255) NOT NULL, ipString varchar(255), replicaCount int, PRIMARY KEY (nodeIP))"
 createReplicaTable = ("create table IF NOT EXISTS ReplicaOf (Master varchar(255) NOT NULL, Replica varchar(255) NOT NULL,"
                         " PRIMARY KEY (Master, Replica), INDEX idx0 (Replica ASC) VISIBLE, INDEX idx1 (Master ASC) VISIBLE,"
-                        " CONSTRAINT con0 FOREIGN KEY (Master) REFERENCES Nodes (nodeIP) ON DELETE NO ACTION ON UPDATE NO ACTION,"
-                        " CONSTRAINT con1 FOREIGN KEY (Replica) REFERENCES Nodes (nodeIP) ON DELETE NO ACTION ON UPDATE NO ACTION)")
+                        " CONSTRAINT con0 FOREIGN KEY (Master) REFERENCES Nodes (nodeIP) ON DELETE CASCADE ON UPDATE NO ACTION,"
+                        " CONSTRAINT con1 FOREIGN KEY (Replica) REFERENCES Nodes (nodeIP) ON DELETE CASCADE ON UPDATE NO ACTION)")
 
 
 dropIfExistsRep = """DROP PROCEDURE IF EXISTS replicaSet"""
