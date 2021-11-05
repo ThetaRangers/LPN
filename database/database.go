@@ -6,4 +6,5 @@ type Database interface {
 	Append(key []byte, value [][]byte) ([][]byte, uint64, error)
 	Del(key []byte) error
 	Replicate(key []byte, value [][]byte, version uint64) error
+	Migrate(key []byte) ([][]byte, uint64, error)
 }

@@ -8,7 +8,7 @@ var costRead = 1
 var costWrite = 2
 var windowLength = 10 * time.Minute
 
-var migrationThreashold = 10
+var migrationThreashold = 1
 
 const (
 	ReadOperation  = 0
@@ -47,7 +47,7 @@ func SetMigrated(key string) {
 }
 
 func SetExported(key string) {
-	external[key] = master[key]
+	external[key] = make([]TimeOp, 0)
 }
 
 func updateAndEvaluate(key string, cost int, m map[string][]TimeOp) {

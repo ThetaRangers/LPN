@@ -201,6 +201,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
 
 	} else {
+		log.Println("LOCAL GET BITHCES")
 		value, _, _ := database.Get(in.GetKey())
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.Master}
 
@@ -495,17 +496,16 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 	keyBytes := in.GetKey()
 	k := string(keyBytes)
 
+	log.Println("Recieved migration request for ", k)
 	cost := uint64(migration.GetCostMaster(k, time.Now()))
 
 	if cost < in.Cost {
 		// Do migration
-		value, version, err := database.Get(keyBytes)
+		value, version, err := database.Migrate(keyBytes)
 		if err != nil {
 			return &pb.Outcome{Out: false}, nil
 		}
 
-		// Remove from db
-		database.Del(keyBytes)
 		migration.SetExported(k)
 
 		// Remove from replicas

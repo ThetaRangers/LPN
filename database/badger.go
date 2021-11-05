@@ -213,6 +213,39 @@ func (b BadgerDB) Del(key []byte) error {
 	return nil
 }
 
+func (b BadgerDB) Migrate(key []byte) ([][]byte, uint64, error) {
+	var slice [][]byte
+
+	err := b.Db.Update(func(txn *badger.Txn) error {
+		item, err2 := txn.Get(key)
+		if err2 == badger.ErrKeyNotFound {
+			return nil
+		} else if err2 != nil {
+			return err2
+		}
+
+		valCopy, err2 := item.ValueCopy(nil)
+
+		err2 = json.Unmarshal(valCopy, &slice)
+		if err2 != nil {
+			return err2
+		}
+
+		err2 = txn.Delete(key)
+		if err2 != nil {
+			return err2
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return slice[1:], binary.BigEndian.Uint64(slice[0]), nil
+}
+
 func GetBadgerDb() *badger.DB {
 	badgerDB, err := badger.Open(badger.DefaultOptions("badgerDB"))
 	if err != nil {
