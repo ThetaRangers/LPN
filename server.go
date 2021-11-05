@@ -500,11 +500,12 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 	keyBytes := in.GetKey()
 	k := string(keyBytes)
 
-	log.Println("Recieved migration request for ", k)
+	log.Println("Received migration request for ", k)
 	cost := uint64(migration.GetCostMaster(k, time.Now()))
 
 	if cost < in.Cost {
 		// Do migration
+		log.Println("Migration accepted")
 		value, version, err := database.Migrate(keyBytes)
 		if err != nil {
 			return &pb.Outcome{Out: false}, nil
@@ -524,6 +525,7 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 		return &pb.Outcome{Out: true, Value: value, Version: version}, nil
 	} else {
 		// Do nothing
+		log.Println("Migration refused")
 		return &pb.Outcome{Out: false}, nil
 	}
 }

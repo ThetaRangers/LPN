@@ -209,6 +209,45 @@ func (r RedisDB) Del(key []byte) error {
 	return nil
 }
 
+func (r RedisDB) Migrate(key []byte) ([][]byte, uint64, error) {
+	ctx := context.Background()
+	var slice [][]byte
+
+	txn := func(tx *redis.Tx) error {
+		val, err := tx.Get(ctx, string(key)).Bytes()
+		if err == redis.Nil {
+			return nil
+		} else if err != nil {
+			return err
+		}
+
+		err = json.Unmarshal(val, &slice)
+		if err != nil {
+			return err
+		}
+
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			return pipe.Del(ctx, string(key)).Err()
+		})
+
+		return nil
+	}
+
+	for {
+		err := r.Db.Watch(ctx, txn, string(key))
+		if err == nil {
+			// Success.
+			return slice[1:], binary.BigEndian.Uint64(slice[0]), nil
+		}
+		if err == redis.TxFailedErr {
+			// Optimistic lock lost. Retry.
+			continue
+		}
+		// Return any other error.
+		return nil, 0, err
+	}
+}
+
 func ConnectToRedis() *redis.Client {
 
 	rdb := redis.NewClient(&redis.Options{
