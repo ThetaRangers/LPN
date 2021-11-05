@@ -9,6 +9,7 @@ import (
 	"SDCC/utils"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/libp2p/go-libp2p-core/routing"
@@ -203,7 +204,6 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
 
 	} else {
-		log.Println("LOCAL GET BITHCES")
 		value, _, _ := database.Get(in.GetKey())
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.Master}
 
@@ -239,8 +239,10 @@ func propagatePut(ctx context.Context, key []byte, value [][]byte, version uint6
 		replicaAddr := replicaSet[i]
 
 		go func() {
-			callReplicate(ctx, replicaAddr, key, value, version)
-			channel <- true
+			err := callReplicate(ctx, replicaAddr, key, value, version)
+			if err == nil {
+				channel <- true
+			}
 		}()
 	}
 	go func() {
@@ -513,7 +515,10 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 		// Remove from replicas
 		for _, replicaAddr := range cluster {
 			client, _, _ := ContactServer(replicaAddr)
-			client.DeleteFromReplicas(ctx, &pb.Key{Key: in.GetKey()})
+			_, err := client.DeleteFromReplicas(ctx, &pb.Key{Key: in.GetKey()})
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		return &pb.Outcome{Out: true, Value: value, Version: version}, nil
@@ -523,18 +528,22 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 	}
 }
 
-func callReplicate(ctx context.Context, ip string, key []byte, value [][]byte, version uint64) {
-	c, _, _ := ContactServer(ip)
+func callReplicate(ctx context.Context, ip string, key []byte, value [][]byte, version uint64) error {
+	c, _, err := ContactServer(ip)
+	if err != nil {
+		return err
+	}
 
 	ack, err := c.Replicate(ctx, &pb.KeyValueVersion{Key: key, Value: value, Version: version})
 	if err != nil {
-		return
+		return err
 	}
 
 	if ack.GetMsg() != "Ok" {
 		// TODO
-		log.Println("Ack Not OK")
+		return errors.New("ack not ok")
 	}
+	return nil
 }
 
 func ContainsNetwork(mask string, ip net.IP) (bool, error) {
