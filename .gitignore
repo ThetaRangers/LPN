@@ -44,3 +44,6 @@ terraform/db_credentials.tfvars
 
 # Aws credentials for container
 .aws
+
+# Raft data
+raft-data/

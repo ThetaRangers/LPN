@@ -6,6 +6,7 @@ import (
 	"SDCC/ipfs"
 	"SDCC/migration"
 	pb "SDCC/operations"
+	"SDCC/replication"
 	"SDCC/utils"
 	"context"
 	"encoding/json"
@@ -24,8 +25,8 @@ import (
 )
 
 const (
-	port = ":50051"
-	mask = "172.17.0.0/24"
+	port       = ":50051"
+	mask       = "172.17.0.0/24"
 	regService = false
 )
 
@@ -49,6 +50,7 @@ var database db.Database
 var ip net.IP
 var address string
 var channel chan migration.KeyOp
+var raftN replication.RaftStruct
 
 func (al *addrList) String() string {
 	strs := make([]string, len(*al))
@@ -100,70 +102,9 @@ func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	return c, conn, nil
 }
 
-/*
- * La get anche se riguarda una replica, chiede il valore al master, così avviene una riconciliazione del valore
- */
-
 // Get rpc function called to retrieve a value, if the value is not found in the local DB, the responsible node is
 // searched on the DHT and queried. If no node can be found an empty value is returned with no error. If an error
 // occurred an empty value is returned with the error. If the value is correctly found, it is returned with no error
-/* func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
-	//Request from the client
-	log.Printf("Received: Get(%v)", in.GetKey())
-	key := string(in.GetKey())
-	value, err := kdht.GetValue(ctx, key)
-	if err != nil {
-		if err == routing.ErrNotFound {
-			//Not found in the dht
-			return &pb.Value{Value: [][]byte{}}, nil
-		} else {
-			return &pb.Value{Value: [][]byte{}}, err
-		}
-	}
-
-	remoteIp := string(value) // TODO list values
-	// bool replica = list.contains(me)
-
-	if remoteIp != address {
-		// Try node list
-		//i := 0
-		c, _, err := ContactServer(remoteIp)
-		if err != nil {
-			for {
-				if replica {
-					nuove elezioni
-				} else {
-					i++
-					remoteIp = remoteIp[i]
-					c, _, err := ContactServer(remoteIp)
-			}
-		}
-
-
-		for {
-			//if i > list.size() break;
-			//TODO skip to next one in the list
-			c, _, err := ContactServer(remoteIp)
-			log.Println("Get ContactServer failure", err)
-			if err != nil {
-				// i++
-				continue
-			}
-
-			result, err := c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
-			if err != nil {
-				// i++
-				continue
-			}
-			return result, nil
-		}
-		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
-
-	} else {
-		return &pb.Value{Value: database.Get(in.GetKey())}, nil
-	}
-} */
-
 func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	//Request from the client
 	log.Printf("Received: Get(%v)", in.GetKey())
@@ -204,7 +145,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
 
 	} else {
-		value, _, _ := database.Get(in.GetKey())
+		value, _ := database.Get(in.GetKey())
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.Master}
 
 		return &pb.Value{Value: value}, nil
@@ -222,39 +163,8 @@ func (s *server) GetInternal(ctx context.Context, in *pb.Key) (*pb.Value, error)
 	var targetCluster []string
 	json.Unmarshal(value, &targetCluster)
 
-	//Check if i'm not the master
-	if targetCluster[0] != address {
-		//TODO implement new master
-		log.Println("I'm not the master for:", in.GetKey())
-	}
-
-	val, _, _ := database.Get(in.GetKey())
+	val, _ := database.Get(in.GetKey())
 	return &pb.Value{Value: val}, nil
-}
-
-func propagatePut(ctx context.Context, key []byte, value [][]byte, version uint64) {
-	channel := make(chan bool)
-	for i := 0; i < utils.Replicas; i++ {
-		// Replicate as goroutine
-		replicaAddr := replicaSet[i]
-
-		go func() {
-			err := callReplicate(ctx, replicaAddr, key, value, version)
-			if err == nil {
-				channel <- true
-			}
-		}()
-	}
-	go func() {
-		time.Sleep(utils.Timeout)
-		channel <- false
-	}()
-	for i := 0; i < utils.WriteQuorum; i++ {
-		done := <-channel
-		if !done {
-			// Timeout
-		}
-	}
 }
 
 // Put rpc function called to store a value on the responsible node. If no responsible node is found, the current node
@@ -272,9 +182,19 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			log.Println("Not found responsible node, putting in local db....")
 			channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 			// Not found in the dht
-			ver, _ := database.Put(in.GetKey(), in.GetValue())
 
-			propagatePut(ctx, in.GetKey(), in.GetValue(), ver)
+			leader := raftN.GetLeader()
+			if leader == ip.String() {
+				err = raftN.Put(in.GetKey(), in.GetValue())
+			} else {
+				c, _, _ := ContactServer(leader)
+
+				_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+			}
+
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
 
 			dhtInput, _ := json.Marshal(cluster)
 			err := kdht.PutValue(ctxDht, string(in.GetKey()), dhtInput)
@@ -317,8 +237,10 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	} else {
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 
-		ver, _ := database.Put(in.GetKey(), in.GetValue())
-		propagatePut(ctx, in.GetKey(), in.GetValue(), ver)
+		err = raftN.Put(in.GetKey(), in.GetValue())
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
+		}
 	}
 
 	return &pb.Ack{Msg: "Ok"}, nil
@@ -340,7 +262,7 @@ func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, err
 		log.Println("I'm not the master for:", in.GetKey())
 	}
 
-	_, err = database.Put(in.GetKey(), in.GetValue())
+	err = raftN.Put(in.GetKey(), in.GetValue())
 	if err != nil {
 		return &pb.Ack{Msg: "Err"}, err
 	}
@@ -360,8 +282,10 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			//Not found in the dht
 			channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 
-			version, _ := database.Put(in.GetKey(), in.GetValue())
-			propagatePut(ctx, in.GetKey(), in.GetValue(), version)
+			err = raftN.Put(in.GetKey(), in.GetValue())
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
 
 			//Set
 			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
@@ -400,7 +324,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	} else {
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 
-		dbRes, versions, _ := database.Append(in.GetKey(), in.GetValue())
+		dbRes, _ := database.Append(in.GetKey(), in.GetValue())
 		propagatePut(ctx, in.GetKey(), dbRes, versions)
 	}
 
@@ -431,7 +355,6 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		c, _, _ := ContactServer(targetCluster[0])
 		i := 1
 		for err != nil {
-			//TODO skip to next one in the list
 			c, _, err = ContactServer(targetCluster[i])
 			if err != nil {
 				i++
@@ -444,28 +367,9 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 			return &pb.Ack{Msg: "Connection error"}, nil
 		}
 	} else {
-		database.Del(in.GetKey())
-
-		channel := make(chan bool)
-		for i := 0; i < utils.Replicas; i++ {
-			// Replicate as goroutine
-			replicaAddr := replicaSet[i]
-
-			go func() {
-				client, _, _ := ContactServer(replicaAddr)
-				client.DeleteFromReplicas(ctx, &pb.Key{Key: in.GetKey()})
-				channel <- true
-			}()
-		}
-		go func() {
-			time.Sleep(utils.Timeout)
-			channel <- false
-		}()
-		for i := 0; i < utils.WriteQuorum; i++ {
-			done := <-channel
-			if !done {
-				// Timeout
-			}
+		err = raftN.Del(in.GetKey())
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
 		}
 
 		err = kdht.PutValue(ctx, key, []byte(""))
@@ -474,7 +378,6 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		}
 	}
 
-	//TODO do delete
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
@@ -488,14 +391,6 @@ func (s *server) DeleteFromReplicas(ctx context.Context, in *pb.Key) (*pb.Ack, e
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
-func (s *server) Replicate(ctx context.Context, in *pb.KeyValueVersion) (*pb.Ack, error) {
-	err := database.Replicate(in.GetKey(), in.GetValue(), in.GetVersion())
-	if err != nil {
-		return &pb.Ack{Msg: "Err"}, err
-	}
-	return &pb.Ack{Msg: "Ok"}, nil
-}
-
 func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, error) {
 	keyBytes := in.GetKey()
 	k := string(keyBytes)
@@ -505,29 +400,28 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 
 	if cost < in.Cost {
 		// Do migration
-		log.Println("Migration accepted")
-		value, version, err := database.Migrate(keyBytes)
+		value, err := database.Get(keyBytes)
+		if err != nil {
+			return &pb.Outcome{Out: false}, nil
+		}
+
+		err = raftN.Del(keyBytes)
 		if err != nil {
 			return &pb.Outcome{Out: false}, nil
 		}
 
 		migration.SetExported(k)
 
-		// Remove from replicas
-		for _, replicaAddr := range cluster {
-			client, _, _ := ContactServer(replicaAddr)
-			_, err := client.DeleteFromReplicas(ctx, &pb.Key{Key: in.GetKey()})
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		return &pb.Outcome{Out: true, Value: value, Version: version}, nil
+		return &pb.Outcome{Out: true, Value: value}, nil
 	} else {
 		// Do nothing
 		log.Println("Migration refused")
 		return &pb.Outcome{Out: false}, nil
 	}
+}
+
+func (s *server) Ping(_ context.Context, _ *pb.PingMessage) (*pb.Ack, error) {
+	return &pb.Ack{Msg: "Pong"}, nil
 }
 
 func callReplicate(ctx context.Context, ip string, key []byte, value [][]byte, version uint64) error {
@@ -589,12 +483,10 @@ func migrationThread(ctx context.Context) {
 			// Do migration
 			val := outcome.Value
 			migration.SetMigrated(k)
-			err = database.Replicate([]byte(k), val, outcome.Version)
+			err = raftN.Put([]byte(k), val)
 			if err != nil {
 				return
 			}
-
-			propagatePut(ctx, []byte(k), val, outcome.Version)
 
 			// Modify dht
 			dhtInput, _ := json.Marshal(cluster)
@@ -715,13 +607,20 @@ func main() {
 		}
 	}
 
+	// Initialize Raft replication
+	raftN = replication.InitializeRaft(ip.String(), database)
+
+	err = raftN.AddNodes(replicaSet)
+	if err != nil {
+		panic(err)
+	}
+
 	cluster = make([]string, 0)
 	cluster = append(cluster, ip.String())
 	cluster = append(cluster, replicaSet...)
 
 	log.Println("Replicas found: ", replicaSet)
 	log.Println("Cluster: ", cluster)
-
 
 	kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
 	kdht.Validator = NullValidator{}

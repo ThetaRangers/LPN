@@ -16,6 +16,7 @@ service Operations {
   rpc Replicate (KeyValueVersion) returns (Ack) {}
   rpc DeleteFromReplicas (Key) returns (Ack) {}
   rpc Migration (KeyCost) returns (Outcome) {}
+  rpc Ping(PingMessage) returns (Ack) {}
 }
 
 message Key {
@@ -51,3 +52,5 @@ message Outcome {
   repeated bytes value = 2;
   uint64 version = 3;
 }
+
+message PingMessage {}

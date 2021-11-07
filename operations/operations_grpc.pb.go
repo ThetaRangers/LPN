@@ -29,6 +29,7 @@ type OperationsClient interface {
 	Replicate(ctx context.Context, in *KeyValueVersion, opts ...grpc.CallOption) (*Ack, error)
 	DeleteFromReplicas(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error)
 	Migration(ctx context.Context, in *KeyCost, opts ...grpc.CallOption) (*Outcome, error)
+	Ping(ctx context.Context, in *PingMessage, opts ...grpc.CallOption) (*Ack, error)
 }
 
 type operationsClient struct {
@@ -138,6 +139,15 @@ func (c *operationsClient) Migration(ctx context.Context, in *KeyCost, opts ...g
 	return out, nil
 }
 
+func (c *operationsClient) Ping(ctx context.Context, in *PingMessage, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, "/operations.Operations/Ping", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OperationsServer is the server API for Operations service.
 // All implementations must embed UnimplementedOperationsServer
 // for forward compatibility
@@ -153,6 +163,7 @@ type OperationsServer interface {
 	Replicate(context.Context, *KeyValueVersion) (*Ack, error)
 	DeleteFromReplicas(context.Context, *Key) (*Ack, error)
 	Migration(context.Context, *KeyCost) (*Outcome, error)
+	Ping(context.Context, *PingMessage) (*Ack, error)
 	mustEmbedUnimplementedOperationsServer()
 }
 
@@ -192,6 +203,9 @@ func (UnimplementedOperationsServer) DeleteFromReplicas(context.Context, *Key) (
 }
 func (UnimplementedOperationsServer) Migration(context.Context, *KeyCost) (*Outcome, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Migration not implemented")
+}
+func (UnimplementedOperationsServer) Ping(context.Context, *PingMessage) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
 func (UnimplementedOperationsServer) mustEmbedUnimplementedOperationsServer() {}
 
@@ -404,6 +418,24 @@ func _Operations_Migration_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Operations_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationsServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/operations.Operations/Ping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationsServer).Ping(ctx, req.(*PingMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Operations_ServiceDesc is the grpc.ServiceDesc for Operations service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -454,6 +486,10 @@ var Operations_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Migration",
 			Handler:    _Operations_Migration_Handler,
+		},
+		{
+			MethodName: "Ping",
+			Handler:    _Operations_Ping_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

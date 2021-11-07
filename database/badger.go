@@ -1,7 +1,6 @@
 package database
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"github.com/dgraph-io/badger"
 	"log"
