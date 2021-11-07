@@ -212,19 +212,22 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	var targetCluster []string
 	json.Unmarshal(value, &targetCluster)
 
-	// If not the master
-	if targetCluster[0] != address {
+	// If not in Raft cluster
+	if !utils.Contains(targetCluster, address) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
 		c, _, err := ContactServer(targetCluster[0])
 		i := 1
 		for err != nil {
-			//TODO skip to next one in the list
-
 			c, _, err = ContactServer(targetCluster[i])
 			if err != nil {
 				i++
-				continue
+				if i > len(targetCluster) {
+					// TODO errore
+					return &pb.Ack{Msg: "Err"}, errors.New("no replica available")
+				} else {
+					continue
+				}
 			}
 		}
 
@@ -237,7 +240,15 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	} else {
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 
-		err = raftN.Put(in.GetKey(), in.GetValue())
+		leader := raftN.GetLeader()
+		if leader == ip.String() {
+			err = raftN.Put(in.GetKey(), in.GetValue())
+		} else {
+			c, _, _ := ContactServer(leader)
+
+			_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		}
+
 		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
 		}
@@ -256,13 +267,14 @@ func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, err
 	var targetCluster []string
 	json.Unmarshal(value, &targetCluster)
 
-	//Check if i'm not the master
-	if targetCluster[0] != address {
-		//TODO implement new master
-		log.Println("I'm not the master for:", in.GetKey())
-	}
+	leader := raftN.GetLeader()
+	if leader == ip.String() {
+		err = raftN.Put(in.GetKey(), in.GetValue())
+	} else {
+		c, _, _ := ContactServer(leader)
 
-	err = raftN.Put(in.GetKey(), in.GetValue())
+		_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+	}
 	if err != nil {
 		return &pb.Ack{Msg: "Err"}, err
 	}
