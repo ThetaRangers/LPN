@@ -12,7 +12,7 @@ import (
 
 const (
 	serverAddress1 = "172.17.0.2:50051"
-	serverAddress2 = "172.17.0.2:50051"
+	serverAddress2 = "172.17.0.3:50051"
 )
 
 func ping(address string) time.Duration {
@@ -53,7 +53,7 @@ func main() {
 
 	input := make([][]byte, 1)
 
-	grr, err := c2.Get(ctx, &pb.Key{Key: []byte("abc")})
+	grr, err := c1.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal("Get", err)
 	}
@@ -66,6 +66,7 @@ func main() {
 	}
 	log.Printf("Put(\"abc\", \"defa\"): %s", r1.GetMsg())
 
+	time.Sleep(3 * time.Second)
 	r2, err := c2.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal("Get", err)
@@ -78,8 +79,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("Put(\"abc\", \"defallo\"): %s", r3.GetMsg())
-
-	time.Sleep(1000)
+	time.Sleep(3 * time.Second)
 
 	r4, err := c2.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
@@ -88,11 +88,12 @@ func main() {
 	log.Printf("Get(\"abc\"): %s", r4.GetValue())
 
 	input[0] = []byte("ghi")
-	r1, err = c1.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: input})
+	r1, err = c2.Append(ctx, &pb.KeyValue{Key: []byte("abc"), Value: input})
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Append(\"abc\", \"ghi\"): %s", r1.GetMsg())
+	time.Sleep(3 * time.Second)
 
 	r2, err = c2.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
@@ -100,12 +101,13 @@ func main() {
 	}
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
 
+	/*
 	r1, err = c2.Del(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Del(\"abc\"): %s", r1.GetMsg())
-	r2, err = c1.Get(ctx, &pb.Key{Key: []byte("abc")})
+	log.Printf("Del(\"abc\"): %s", r1.GetMsg())*/
+	r2, err = c2.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal(err)
 	}

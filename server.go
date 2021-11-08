@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/dgraph-io/badger"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/multiformats/go-multiaddr"
@@ -50,7 +51,7 @@ var database db.Database
 var ip net.IP
 var address string
 var channel chan migration.KeyOp
-var raftN replication.RaftStruct
+var raftN *replication.RaftStruct
 
 func (al *addrList) String() string {
 	strs := make([]string, len(*al))
@@ -123,7 +124,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	var targetCluster []string
 	json.Unmarshal(value, &targetCluster)
 
-	if targetCluster[0] != address {
+	if !utils.Contains(targetCluster, address) {
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.External}
 
 		// Try node list
@@ -258,14 +259,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 }
 
 func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
-	key := string(in.GetKey())
-	value, err := kdht.GetValue(ctx, key)
-	if err != nil {
-		return &pb.Ack{Msg: "Err"}, err
-	}
-
-	var targetCluster []string
-	json.Unmarshal(value, &targetCluster)
+	var err error
 
 	leader := raftN.GetLeader()
 	if leader == ip.String() {
@@ -294,7 +288,14 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			//Not found in the dht
 			channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 
-			err = raftN.Put(in.GetKey(), in.GetValue())
+			leader := raftN.GetLeader()
+			if leader == ip.String() {
+				err = raftN.Put(in.GetKey(), in.GetValue())
+			} else {
+				c, _, _ := ContactServer(leader)
+
+				_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+			}
 			if err != nil {
 				return &pb.Ack{Msg: "Err"}, err
 			}
@@ -315,7 +316,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	json.Unmarshal(value, &targetCluster)
 
 	//Found in the dht
-	if targetCluster[0] != address {
+	if !utils.Contains(targetCluster, address) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
 
@@ -329,15 +330,39 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			}
 		}
 
-		_, err := c.Append(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		_, err := c.AppendInternal(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
 		if err != nil {
 			return &pb.Ack{Msg: "Connection error"}, nil
 		}
 	} else {
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 
-		dbRes, _ := database.Append(in.GetKey(), in.GetValue())
-		propagatePut(ctx, in.GetKey(), dbRes, versions)
+		leader := raftN.GetLeader()
+		if leader == ip.String() {
+			err = raftN.Append(in.GetKey(), in.GetValue())
+		} else {
+			c, _, _ := ContactServer(leader)
+
+			_, err = c.AppendInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		}
+	}
+
+	return &pb.Ack{Msg: "Ok"}, nil
+}
+
+func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error){
+	var err error
+
+	leader := raftN.GetLeader()
+	if leader == ip.String() {
+		err = raftN.Append(in.GetKey(), in.GetValue())
+	} else {
+		c, _, _ := ContactServer(leader)
+
+		_, err = c.AppendInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+	}
+	if err != nil {
+		return &pb.Ack{Msg: "Err"}, err
 	}
 
 	return &pb.Ack{Msg: "Ok"}, nil
@@ -379,7 +404,15 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 			return &pb.Ack{Msg: "Connection error"}, nil
 		}
 	} else {
-		err = raftN.Del(in.GetKey())
+
+		leader := raftN.GetLeader()
+		if leader == ip.String() {
+			err = raftN.Del(in.GetKey())
+		} else {
+			c, _, _ := ContactServer(leader)
+
+			_, err = c.Del(context.Background(), &pb.Key{Key: in.GetKey()})
+		}
 		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
 		}
@@ -430,6 +463,22 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 		log.Println("Migration refused")
 		return &pb.Outcome{Out: false}, nil
 	}
+}
+
+// Raft leader calls this to ask to Join the cluster
+func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) {
+
+	received := in.GetCluster()
+	log.Printf("Recieved join request to ", received)
+
+	if utils.Contains(received, ip.String()) {
+		cluster = append(cluster, ip.String())
+		cluster = append(cluster, utils.RemoveFromList(received, ip.String())...)
+	} else {
+		cluster = received
+	}
+
+	return &pb.Ack{Msg: ip.String()}, nil
 }
 
 func (s *server) Ping(_ context.Context, _ *pb.PingMessage) (*pb.Ack, error) {
@@ -588,6 +637,9 @@ func main() {
 		}
 	}
 
+	// Initialize Raft replication
+	raftN = replication.InitializeRaft(ip.String(), database)
+
 	if regService {
 		// TODO maybe add support for ip6
 		ipStr := fmt.Sprintf("%s/p2p/%s", addrString, h.ID().Pretty())
@@ -611,34 +663,93 @@ func main() {
 			}
 		}
 	} else {
-		replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
-		for len(replicaSet) != utils.Replicas {
-			log.Println("Waiting for replicas to connect...")
-			time.Sleep(60 * time.Second)
-			replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
+		replicaSet = cloud.RegisterStub2(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
+
+		if len(replicaSet) != 0 {
+			cluster = make([]string, 0)
+			cluster = append(cluster, ip.String())
+			cluster = append(cluster, replicaSet...)
+
+			log.Println("Replicas found: ", replicaSet)
+			log.Println("Cluster: ", cluster)
+
+			for _, addr := range replicaSet {
+				var err error
+				var c pb.OperationsClient
+
+				for err != nil || c == nil {
+					c, _, err = ContactServer(addr)
+					log.Println("Failed to contact, trying again...")
+				}
+
+				log.Printf("Asking %s to join", addr)
+
+				log.Println(c, context.Background(), &pb.JoinMessage{Cluster: cluster})
+				_, err = c.Join(context.Background(), &pb.JoinMessage{Cluster: cluster})
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				log.Printf("Adding %s to raft", addr)
+				err = raftN.AddNode(addr)
+				if err != nil {
+					log.Fatal(err)
+				}
+				log.Printf("Done adding %s to raft", addr)
+			}
+
 		}
+		/*
+			for len(replicaSet) != utils.Replicas {
+				log.Println("Waiting for cluster to connect...")
+				time.Sleep(60 * time.Second)
+				replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
+			}*/
 	}
-
-	// Initialize Raft replication
-	raftN = replication.InitializeRaft(ip.String(), database)
-
+	/*
 	err = raftN.AddNodes(replicaSet)
 	if err != nil {
 		panic(err)
-	}
-
-	cluster = make([]string, 0)
-	cluster = append(cluster, ip.String())
-	cluster = append(cluster, replicaSet...)
-
-	log.Println("Replicas found: ", replicaSet)
-	log.Println("Cluster: ", cluster)
+	}*/
 
 	kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
 	kdht.Validator = NullValidator{}
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	go func() {
+		var dab *badger.DB
+		dab = database.(db.BadgerDB).Db
+		for {
+			log.Println("____________________Begin printing db____________________")
+			err := dab.View(func(txn *badger.Txn) error {
+				opts := badger.DefaultIteratorOptions
+				opts.PrefetchSize = 10
+				it := txn.NewIterator(opts)
+				defer it.Close()
+				log.Println("Begin iteration", it.Valid())
+				for it.Rewind(); it.Valid(); it.Next() {
+					item := it.Item()
+					k := item.Key()
+					err := item.Value(func(v []byte) error {
+						fmt.Printf("key=%s, value=%s\n", k, v)
+						return nil
+					})
+					if err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			log.Println("____________________End printing db____________________")
+			if err != nil {
+				log.Println("There is a problem")
+			}
+
+			time.Sleep(30 * time.Second)
+		}
+	}()
 
 	log.Printf("server listening at %v", lis.Addr())
 	if err := s.Serve(lis); err != nil {

@@ -79,6 +79,24 @@ func RegisterStub(ip, network string, n int, region string) []string {
 	return set
 }
 
+func RegisterStub2(ip, network string, n int, region string) []string {
+	address := "172.17.0."
+	set := make([]string, 0)
+
+	if ip == "172.17.0.2" {
+		for i := 3; i < utils.Replicas+3; i++ {
+			abba := strconv.Itoa(i)
+			tmpAddr := address + abba
+
+			set = append(set, tmpAddr)
+		}
+	} else if ip == "172.17.0.7" {
+		return append(set, "172.17.0.2")
+	}
+
+	return set
+}
+
 func main() {
 	var ip string
 	var ipStr string

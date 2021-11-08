@@ -17,6 +17,11 @@ service Operations {
   rpc DeleteFromReplicas (Key) returns (Ack) {}
   rpc Migration (KeyCost) returns (Outcome) {}
   rpc Ping(PingMessage) returns (Ack) {}
+  rpc Join(JoinMessage) returns (Ack) {}
+}
+
+message JoinMessage {
+    repeated string cluster = 1;
 }
 
 message Key {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -73,6 +74,21 @@ func (r RaftStruct) Del(key []byte) error {
 	return nil
 }
 
+func (r RaftStruct) Append(key []byte, value [][]byte) error {
+	payload := CommandPayload{
+		Operation: "APPEND",
+		Key:       key,
+		Value:     value,
+	}
+
+	err := r.apply(payload)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r RaftStruct) apply(payload CommandPayload) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -103,7 +119,12 @@ func (r RaftStruct) AddNodes(addresses []string) error {
 	return nil
 }
 
-func InitializeRaft(ip string, db database.Database) RaftStruct {
+func InitializeRaft(ip string, db database.Database) *RaftStruct {
+	err := os.Mkdir("raft-data", 0755)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	raftConf := raft.DefaultConfig()
 	nodeId := ip
 	raftConf.LocalID = raft.ServerID(nodeId)
@@ -156,7 +177,5 @@ func InitializeRaft(ip string, db database.Database) RaftStruct {
 
 	raftNode.BootstrapCluster(configuration)
 
-	r := RaftStruct{RaftNode: raftNode}
-
-	return r
+	return &RaftStruct{RaftNode: raftNode}
 }

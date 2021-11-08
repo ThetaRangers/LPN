@@ -62,6 +62,12 @@ func (f FSM) Apply(log *raft.Log) interface{} {
 				Error: f.db.Put(payload.Key, payload.Value),
 				Data:  payload.Value,
 			}
+		case "APPEND":
+			_, err := f.db.Append(payload.Key, payload.Value)
+			return &ApplyResponse{
+				Error: err,
+				Data:  nil,
+			}
 		case "DELETE":
 			return &ApplyResponse{
 				Error: f.db.Del(payload.Key),
