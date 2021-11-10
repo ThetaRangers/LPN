@@ -129,6 +129,7 @@ func (r RaftStruct) RemoveNode(ip string) error {
 }
 
 func InitializeRaft(ip string, db database.Database) *RaftStruct {
+	os.RemoveAll("raft-data")
 	err := os.Mkdir("raft-data", 0755)
 	if err != nil {
 		log.Println(err)

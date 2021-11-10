@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	serverAddress1 = "172.17.0.2:50051"
+	serverAddress1 = "172.17.0.11:50051"
 	serverAddress2 = "172.17.0.11:50051"
 )
 

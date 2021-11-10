@@ -475,7 +475,6 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 		// TODO transfer cluster
 
 		log.Println("Leaving old cluster: ", cluster)
-		fmt.Println("State is: ", raftN.RaftNode.Stats())
 		leader := raftN.GetLeader()
 		log.Println("Leader is ", leader)
 		c, _, err := ContactServer(leader)
@@ -490,6 +489,14 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 			return nil, err
 		}
 
+		f := raftN.RaftNode.Shutdown()
+		err = f.Error()
+		if err != nil {
+			log.Fatal("ERROR IN SHUTDOWN", err)
+		}
+
+		raftN = replication.InitializeRaft(ip.String(), database)
+		log.Println("LEFT OLD CLUSTER")
 	} else {
 		// If node doesn't take part in a cluster join it
 		if utils.Contains(received, ip.String()) {
@@ -794,7 +801,7 @@ func main() {
 		var dab *badger.DB
 		dab = database.(db.BadgerDB).Db
 		for {
-			log.Println("Leader: ", raftN.GetLeader())
+			log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats())
 			log.Println("____________________Begin printing db____________________")
 			err := dab.View(func(txn *badger.Txn) error {
 				opts := badger.DefaultIteratorOptions
