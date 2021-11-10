@@ -12,7 +12,7 @@ import (
 
 const (
 	serverAddress1 = "172.17.0.2:50051"
-	serverAddress2 = "172.17.0.3:50051"
+	serverAddress2 = "172.17.0.11:50051"
 )
 
 func ping(address string) time.Duration {
@@ -102,11 +102,11 @@ func main() {
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
 
 	/*
-	r1, err = c2.Del(ctx, &pb.Key{Key: []byte("abc")})
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("Del(\"abc\"): %s", r1.GetMsg())*/
+		r1, err = c2.Del(ctx, &pb.Key{Key: []byte("abc")})
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Del(\"abc\"): %s", r1.GetMsg())*/
 	r2, err = c2.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal(err)

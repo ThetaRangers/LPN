@@ -31,6 +31,8 @@ type OperationsClient interface {
 	Migration(ctx context.Context, in *KeyCost, opts ...grpc.CallOption) (*Outcome, error)
 	Ping(ctx context.Context, in *PingMessage, opts ...grpc.CallOption) (*Ack, error)
 	Join(ctx context.Context, in *JoinMessage, opts ...grpc.CallOption) (*Ack, error)
+	RequestJoin(ctx context.Context, in *RequestJoinMessage, opts ...grpc.CallOption) (*JoinMessage, error)
+	LeaveCluster(ctx context.Context, in *RequestJoinMessage, opts ...grpc.CallOption) (*Ack, error)
 }
 
 type operationsClient struct {
@@ -158,6 +160,24 @@ func (c *operationsClient) Join(ctx context.Context, in *JoinMessage, opts ...gr
 	return out, nil
 }
 
+func (c *operationsClient) RequestJoin(ctx context.Context, in *RequestJoinMessage, opts ...grpc.CallOption) (*JoinMessage, error) {
+	out := new(JoinMessage)
+	err := c.cc.Invoke(ctx, "/operations.Operations/RequestJoin", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operationsClient) LeaveCluster(ctx context.Context, in *RequestJoinMessage, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, "/operations.Operations/LeaveCluster", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OperationsServer is the server API for Operations service.
 // All implementations must embed UnimplementedOperationsServer
 // for forward compatibility
@@ -175,6 +195,8 @@ type OperationsServer interface {
 	Migration(context.Context, *KeyCost) (*Outcome, error)
 	Ping(context.Context, *PingMessage) (*Ack, error)
 	Join(context.Context, *JoinMessage) (*Ack, error)
+	RequestJoin(context.Context, *RequestJoinMessage) (*JoinMessage, error)
+	LeaveCluster(context.Context, *RequestJoinMessage) (*Ack, error)
 	mustEmbedUnimplementedOperationsServer()
 }
 
@@ -220,6 +242,12 @@ func (UnimplementedOperationsServer) Ping(context.Context, *PingMessage) (*Ack, 
 }
 func (UnimplementedOperationsServer) Join(context.Context, *JoinMessage) (*Ack, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Join not implemented")
+}
+func (UnimplementedOperationsServer) RequestJoin(context.Context, *RequestJoinMessage) (*JoinMessage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestJoin not implemented")
+}
+func (UnimplementedOperationsServer) LeaveCluster(context.Context, *RequestJoinMessage) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LeaveCluster not implemented")
 }
 func (UnimplementedOperationsServer) mustEmbedUnimplementedOperationsServer() {}
 
@@ -468,6 +496,42 @@ func _Operations_Join_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Operations_RequestJoin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestJoinMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationsServer).RequestJoin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/operations.Operations/RequestJoin",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationsServer).RequestJoin(ctx, req.(*RequestJoinMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Operations_LeaveCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestJoinMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationsServer).LeaveCluster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/operations.Operations/LeaveCluster",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationsServer).LeaveCluster(ctx, req.(*RequestJoinMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Operations_ServiceDesc is the grpc.ServiceDesc for Operations service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -526,6 +590,14 @@ var Operations_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Join",
 			Handler:    _Operations_Join_Handler,
+		},
+		{
+			MethodName: "RequestJoin",
+			Handler:    _Operations_RequestJoin_Handler,
+		},
+		{
+			MethodName: "LeaveCluster",
+			Handler:    _Operations_LeaveCluster_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

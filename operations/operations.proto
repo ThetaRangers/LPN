@@ -18,10 +18,16 @@ service Operations {
   rpc Migration (KeyCost) returns (Outcome) {}
   rpc Ping(PingMessage) returns (Ack) {}
   rpc Join(JoinMessage) returns (Ack) {}
+  rpc RequestJoin(RequestJoinMessage) returns (JoinMessage) {}
+  rpc LeaveCluster(RequestJoinMessage) returns (Ack) {}
 }
 
 message JoinMessage {
     repeated string cluster = 1;
+}
+
+message RequestJoinMessage {
+  string ip = 1;
 }
 
 message Key {

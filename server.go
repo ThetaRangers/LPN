@@ -350,7 +350,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
-func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error){
+func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	var err error
 
 	leader := raftN.GetLeader()
@@ -465,20 +465,81 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 	}
 }
 
-// Raft leader calls this to ask to Join the cluster
+// Join Raft leader calls this to ask to Join the cluster
 func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) {
-
 	received := in.GetCluster()
-	log.Printf("Recieved join request to ", received)
+	log.Println("Received join request to ", received)
 
-	if utils.Contains(received, ip.String()) {
-		cluster = append(cluster, ip.String())
-		cluster = append(cluster, utils.RemoveFromList(received, ip.String())...)
+	if len(cluster) != 0 {
+		// If node is part of a cluster and needs to transfer
+		// TODO transfer cluster
+
+		log.Println("Leaving old cluster: ", cluster)
+		fmt.Println("State is: ", raftN.RaftNode.Stats())
+		leader := raftN.GetLeader()
+		log.Println("Leader is ", leader)
+		c, _, err := ContactServer(leader)
+		if err != nil {
+			log.Println("ERROR", err)
+			return nil, err
+		}
+
+		_, err = c.LeaveCluster(context.Background(), &pb.RequestJoinMessage{Ip: ip.String()})
+		if err != nil {
+			log.Println("ERROR", err)
+			return nil, err
+		}
+
 	} else {
-		cluster = received
+		// If node doesn't take part in a cluster join it
+		if utils.Contains(received, ip.String()) {
+			cluster = append(cluster, ip.String())
+			cluster = append(cluster, utils.RemoveFromList(received, ip.String())...)
+		} else {
+			cluster = received
+		}
 	}
 
-	return &pb.Ack{Msg: ip.String()}, nil
+	return &pb.Ack{Msg: "Ok"}, nil
+}
+
+// LeaveCluster used to leave a cluster
+func (s *server) LeaveCluster(ctx context.Context, in *pb.RequestJoinMessage) (*pb.Ack, error) {
+	address := in.GetIp()
+
+	err := raftN.RemoveNode(address)
+	if err != nil {
+		log.Println("ERROR IN LEAVING", err)
+		return nil, err
+	}
+
+	return &pb.Ack{Msg: "Ok"}, nil
+}
+
+// RequestJoin Function called to request a join in a cluster
+func (s *server) RequestJoin(ctx context.Context, in *pb.RequestJoinMessage) (*pb.JoinMessage, error) {
+	address := in.GetIp()
+
+	// If this node is the master
+	leader := raftN.GetLeader()
+	if raftN.GetLeader() == ip.String() {
+		err := raftN.AddNode(address)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		c, _, err := ContactServer(leader)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = c.RequestJoin(ctx, &pb.RequestJoinMessage{Ip: address})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pb.JoinMessage{Cluster: cluster}, nil
 }
 
 func (s *server) Ping(_ context.Context, _ *pb.PingMessage) (*pb.Ack, error) {
@@ -639,6 +700,7 @@ func main() {
 
 	// Initialize Raft replication
 	raftN = replication.InitializeRaft(ip.String(), database)
+	time.Sleep(3 * time.Second)
 
 	if regService {
 		// TODO maybe add support for ip6
@@ -663,9 +725,29 @@ func main() {
 			}
 		}
 	} else {
-		replicaSet = cloud.RegisterStub2(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
+		replicaSet, externalCluster, crashed := cloud.RegisterStub2(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
 
-		if len(replicaSet) != 0 {
+		if crashed {
+			// Node is crashed need to rejoin the cluster
+
+		} else if externalCluster {
+			// If external to the cluster
+
+			target := replicaSet[0]
+
+			// TODO try to contact others
+			log.Println("Requesting join on cluster ", replicaSet)
+			c, _, _ := ContactServer(target)
+
+			res, err := c.RequestJoin(context.Background(), &pb.RequestJoinMessage{Ip: ip.String()})
+			if err != nil {
+				log.Println("ERROR", err)
+			}
+
+			// TODO change
+			cluster = res.GetCluster()
+		} else if len(replicaSet) != 0 {
+			// If master to a cluster
 			cluster = make([]string, 0)
 			cluster = append(cluster, ip.String())
 			cluster = append(cluster, replicaSet...)
@@ -677,40 +759,30 @@ func main() {
 				var err error
 				var c pb.OperationsClient
 
+				log.Printf("Asking %s to join", addr)
+
 				for err != nil || c == nil {
 					c, _, err = ContactServer(addr)
 					log.Println("Failed to contact, trying again...")
 				}
 
-				log.Printf("Asking %s to join", addr)
-
 				log.Println(c, context.Background(), &pb.JoinMessage{Cluster: cluster})
 				_, err = c.Join(context.Background(), &pb.JoinMessage{Cluster: cluster})
 				if err != nil {
-					log.Fatal(err)
+					log.Fatal("ERROR in requesting join", err)
 				}
 
-				log.Printf("Adding %s to raft", addr)
+				log.Printf("Adding %s to raft, leader is %s", addr, raftN.GetLeader())
 				err = raftN.AddNode(addr)
 				if err != nil {
 					log.Fatal(err)
 				}
 				log.Printf("Done adding %s to raft", addr)
+
 			}
 
 		}
-		/*
-			for len(replicaSet) != utils.Replicas {
-				log.Println("Waiting for cluster to connect...")
-				time.Sleep(60 * time.Second)
-				replicaSet = cloud.RegisterStub(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
-			}*/
 	}
-	/*
-	err = raftN.AddNodes(replicaSet)
-	if err != nil {
-		panic(err)
-	}*/
 
 	kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
 	kdht.Validator = NullValidator{}
@@ -722,6 +794,7 @@ func main() {
 		var dab *badger.DB
 		dab = database.(db.BadgerDB).Db
 		for {
+			log.Println("Leader: ", raftN.GetLeader())
 			log.Println("____________________Begin printing db____________________")
 			err := dab.View(func(txn *badger.Txn) error {
 				opts := badger.DefaultIteratorOptions

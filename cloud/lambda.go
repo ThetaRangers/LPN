@@ -79,7 +79,7 @@ func RegisterStub(ip, network string, n int, region string) []string {
 	return set
 }
 
-func RegisterStub2(ip, network string, n int, region string) []string {
+func RegisterStub2(ip, network string, n int, region string) ([]string, bool, bool) {
 	address := "172.17.0."
 	set := make([]string, 0)
 
@@ -90,11 +90,15 @@ func RegisterStub2(ip, network string, n int, region string) []string {
 
 			set = append(set, tmpAddr)
 		}
-	} else if ip == "172.17.0.7" {
-		return append(set, "172.17.0.2")
+	} else if ip == "172.17.0.11" {
+		set = []string{"172.17.0.7", "172.17.0.8", "172.17.0.9", "172.17.0.10"}
 	}
 
-	return set
+	if ip == "172.17.0.7" || ip == "172.17.0.8" || ip == "172.17.0.9" || ip == "172.17.0.10" {
+		return append(set, "172.17.0.2"), true, false
+	}
+
+	return set, false, false
 }
 
 func main() {

@@ -25,17 +25,6 @@ type RaftStruct struct {
 	RaftNode *raft.Raft
 }
 
-func (r RaftStruct) AddNode(ip string) error {
-	address := fmt.Sprintf("%s:%d", ip, raftPort)
-
-	f := r.RaftNode.AddVoter(raft.ServerID(ip), raft.ServerAddress(address), 0, 0)
-	if f.Error() != nil {
-		return f.Error()
-	}
-
-	return nil
-}
-
 func (r RaftStruct) GetLeader() string {
 	addr := r.RaftNode.Leader()
 
@@ -108,6 +97,17 @@ func (r RaftStruct) apply(payload CommandPayload) error {
 	return nil
 }
 
+func (r RaftStruct) AddNode(ip string) error {
+	address := fmt.Sprintf("%s:%d", ip, raftPort)
+
+	f := r.RaftNode.AddVoter(raft.ServerID(ip), raft.ServerAddress(address), 0, 0)
+	if f.Error() != nil {
+		return f.Error()
+	}
+
+	return nil
+}
+
 func (r RaftStruct) AddNodes(addresses []string) error {
 	for _, addr := range addresses {
 		err := r.AddNode(addr)
@@ -119,10 +119,19 @@ func (r RaftStruct) AddNodes(addresses []string) error {
 	return nil
 }
 
+func (r RaftStruct) RemoveNode(ip string) error {
+	f := r.RaftNode.RemoveServer(raft.ServerID(ip), 0, 0)
+	if f.Error() != nil {
+		return f.Error()
+	}
+
+	return nil
+}
+
 func InitializeRaft(ip string, db database.Database) *RaftStruct {
 	err := os.Mkdir("raft-data", 0755)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 
 	raftConf := raft.DefaultConfig()
