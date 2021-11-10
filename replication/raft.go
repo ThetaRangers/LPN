@@ -130,7 +130,6 @@ func (r RaftStruct) RemoveNode(ip string) error {
 }
 
 func InitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutine) *RaftStruct {
-	os.RemoveAll("raft-data")
 	err := os.Mkdir("raft-data", 0755)
 	if err != nil {
 		log.Println(err)
@@ -147,14 +146,14 @@ func InitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutin
 	tcpTimeout := timeout
 	var raftBinAddr = fmt.Sprintf("%s:%d", ip, raftPort)
 
-	store, err := raftboltdb.NewBoltStore("raft-data/boltstore")
+	ldb, err := raftboltdb.NewBoltStore("raft-data/logstore")
 	if err != nil {
-		panic(err)
+		log.Println("boltdb.NewBoltStore:", err)
 	}
 
-	cacheStore, err := raft.NewLogCache(cacheSize, store)
+	sdb, err := raftboltdb.NewBoltStore("raft-data/stablestore")
 	if err != nil {
-		panic(err)
+		log.Println("boltdb.NewBoltStore:", err)
 	}
 
 	snapshotStore, err := raft.NewFileSnapshotStore("raft-data/snapshot", 2, os.Stdout)
@@ -172,7 +171,7 @@ func InitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutin
 		panic(err)
 	}
 
-	raftNode, err := raft.NewRaft(raftConf, fsmStore, cacheStore, store, snapshotStore, transport)
+	raftNode, err := raft.NewRaft(raftConf, fsmStore, ldb, sdb, snapshotStore, transport)
 	if err != nil {
 		panic(err)
 	}
