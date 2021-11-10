@@ -24,24 +24,24 @@ def handler_print(event, context):
     logger.info("SUCCESS: Connection to RDS mysql instance succeeded")
 
     with conn.cursor() as cur:
-        print("NodesIP\tIPstring\tReplicaCount\n")
+        print("NodesIP\tIPstring\n")
         cur.execute(getNodes)
 
         rows = cur.fetchall()
         for row in rows:
             ip = f'{row[0]}'
             ipStr = f'{row[1]}'
-            replicaCount = row[2]
-            print("%s\t%s\t%d\n" %(ip, ipStr, replicaCount))
+            print("%s\t%s\n" %(ip, ipStr))
 
-        print("Master\tReplica\n")
+        print("ClusterID\tNodeIP\tAttached\n")
         cur.execute(getReplicaOf)
 
         rows = cur.fetchall()
         for row in rows:
-            master = f'{row[0]}'
-            replica = f'{row[1]}'
-            print("%s\t%s\n" %(master, replica))
+            clusterId = f'{row[0]}'
+            nodeIp = f'{row[1]}'
+            attached = row[2]
+            print("%s\t%s\t%d\n" %(clusterId, nodeIp, attached))
 
 
         json_data = { }

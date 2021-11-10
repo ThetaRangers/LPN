@@ -1,103 +1,130 @@
-createNodeTable = "create table IF NOT EXISTS Nodes (nodeIP varchar(255) NOT NULL, ipString varchar(255), replicaCount int, PRIMARY KEY (nodeIP))"
-createReplicaTable = ("create table IF NOT EXISTS ReplicaOf (Master varchar(255) NOT NULL, Replica varchar(255) NOT NULL,"
-                        " PRIMARY KEY (Master, Replica), INDEX idx0 (Replica ASC) VISIBLE, INDEX idx1 (Master ASC) VISIBLE,"
-                        " CONSTRAINT con0 FOREIGN KEY (Master) REFERENCES Nodes (nodeIP) ON DELETE CASCADE ON UPDATE NO ACTION,"
-                        " CONSTRAINT con1 FOREIGN KEY (Replica) REFERENCES Nodes (nodeIP) ON DELETE CASCADE ON UPDATE NO ACTION)")
+createNodeTable = "create table IF NOT EXISTS Nodes (ip varchar(255) NOT NULL, ipString varchar(255), PRIMARY KEY (ip))"
+createClusterTable = ("create table IF NOT EXISTS Cluster (idCluster varchar(255) NOT NULL, node varchar(255) NOT NULL, attached int NULL,"
+                        " PRIMARY KEY (idCluster, node), INDEX idx0 (node ASC) VISIBLE,"
+                        " CONSTRAINT con0 FOREIGN KEY (node) REFERENCES Nodes (ip) ON DELETE CASCADE ON UPDATE NO ACTION)")
 
 
-dropIfExistsRep = """DROP PROCEDURE IF EXISTS replicaSet"""
-replicaProc =     """CREATE PROCEDURE `replicaSet`(in myIP varchar(255),in ipStr varchar(255),in replicaNumber int, out valid int, out crashed int)
+dropIfExistsProc = """DROP PROCEDURE IF EXISTS replicaSet"""
+replicaProc =     """CREATE PROCEDURE `clusterSet`(in myIP varchar(255),in ipStr varchar(255),in clusterSize int, out valid int, out crashed int)
 BEGIN
    
-   declare var_nodes int;
-   declare n int default 0;
-   declare i int default 0;
-    
-   declare exit handler for sqlexception
-   begin
-      rollback;
-      resignal;
-   end;
-   
-   drop temporary table if exists tempNode;
-   create temporary table tempNode(repIP varchar(255), repIpStr varchar(255));
-   
-   set AUTOCOMMIT = 0; 
-   set session transaction isolation level serializable;
-   start transaction;                        
-   
-   transactionBlock:BEGIN
-   
-    -- add Node if not exists
-   insert ignore into Nodes (nodeIP, ipString, replicaCount) values (myIP, ipStr, 0);
+       declare var_nodes int;
+   	   declare var_clusterId int;
+       declare var_lastCluster int;
+       declare var_nodesInCluster int;
+       declare var_newClusterId int;
 
-   -- update ipStr
-   update Nodes set ipString = ipStr where nodeIP = myIP;
+      declare exit handler for sqlexception
+      begin
+         rollback;
+         resignal;
+      end;
 
-   -- check node number for replication
-   select count(nodeIP)
-   from Nodes
-   where nodeIP <> myIP 
-   into var_nodes;
+      set AUTOCOMMIT = 0;
+      set session transaction isolation level serializable;
+      start transaction;
 
-   -- not enough nodes 
-   if( var_nodes < replicaNumber) then
-      set valid = 0;
-   else 
-      set valid = 1;
-   end if;
+      transactionBlock:BEGIN
 
-   -- check crash
-   if(exists(  select Master
-            from ReplicaOf
-            where Master = myIP )) then
-      set crashed = 1;
+       -- add Node if not exists
+      insert ignore into Nodes (ip, ipString) values (myIP, ipStr);
 
-      -- return old replicas
-      select Replica, ipString
-      from ReplicaOf join Nodes on Nodes.nodeIP=ReplicaOf.Replica
-      where Master = myIP; 
-                           
-      leave transactionBlock;
-   end if;
-                        
-   set crashed = 0;
-    
-    if(var_nodes < replicaNumber) then
-      select nodeIP, ipString from Nodes limit 0;
-      leave transactionBlock;
-   end if;
+      -- update ipStr
+      update Nodes set ipString = ipStr where ip = myIP;
 
-   -- new replicas
-   insert into tempNode
-   select nodeIP, ipString
-   from Nodes
-   where nodeIP <> myIP
-   order by replicaCount asc
-   limit replicaNumber; 
+      -- check node number for replication
+      select count(ip)
+      from Nodes
+      into var_nodes;
 
-   -- update counters    
-    update Nodes 
-   set replicaCount = replicaCount + 1
-   where nodeIP in (select repIP from tempNode);
-   
-    -- update dependencies
-    select count(*) from tempNode into n;
-    set i=0;
-    
-    while i<n do
-      insert into ReplicaOf(Master, Replica) 
-        select myIP, repIP from tempNode limit i,1;
-        set i = i+1;
-    end while;
-    
-   -- return nodesIP
-   select repIP, repIpStr from tempNode;
+      -- not enough nodes for first cluster
+      if( var_nodes < clusterSize) then
+         set valid = 0;
+      else
+         set valid = 1;
+      end if;
+
+      -- check crash if ip is in a cluster
+      if(exists(  select node
+               from Cluster
+               where node = myIP )) then
+         set crashed = 1;
+
+         -- get cluster id
+         select idCluster
+         from Cluster
+         where node = myIP into var_clusterId;
+
+   	  -- get ip in the cluster
+         select node, ipString
+         from Cluster join Nodes on Nodes.ip=Cluster.node
+         where node <> myIP and idCluster = var_clusterId;
+
+         leave transactionBlock;
+      end if;
+
+      set crashed = 0;
+
+       -- empty list
+       if(var_nodes < clusterSize) then
+         select ip, ipString from Nodes limit 0;
+         leave transactionBlock;
+      end if;
+
+      -- first cluster
+      if(var_nodes = clusterSize) then
+   		insert into Cluster(node, idCluster, attached)
+           select ip,0,0 from Nodes;
+
+   		select node, ipString
+           from Cluster join Nodes on Nodes.ip=Cluster.node
+           where node <> myIP and idCluster = 0;
+
+           leave transactionBlock;
+   	end if;
+
+       -- check join or create new cluster
+       -- get last cluster
+       select max(idCluster)
+       from Cluster into var_lastCluster;
+
+       -- get count of nodes attached in last cluster
+       select count(*)
+       from Cluster
+       where idCluster = var_lastCluster and attached=1
+       into var_nodesInCluster;
+
+       if(var_nodesInCluster < clusterSize-1) then
+   		-- not enough nodes to a new cluster
+           -- attach node to the last cluster
+           insert into Cluster(idCluster, node, attached)
+           values(var_lastCluster, myIP, 1);
+
+           -- return ip of the cluster
+           select node, ipString
+           from Cluster join Nodes on Nodes.ip=Cluster.node
+           where node <> myIP and idCluster = var_lastCluster;
+   	else
+   		-- create new cluster
+           set var_newClusterId = var_lastCluster+1;
+           -- insert ip in new cluster
+           insert into Cluster(idCluster, node, attached)
+           values(var_newClusterId, myIP, 0);
+
+           -- swicth other to my cluster
+           update Cluster
+           set idCluster = var_newClusterId, attached = 0
+           where idCluster = var_lastCluster and attached = 1;
+
+           -- return nodes
+           select node, ipString
+           from Cluster join Nodes on Nodes.ip=Cluster.node
+           where node <> myIP and idCluster = var_newClusterId;
+
+       end if;
+
+      END transactionBlock;
+      commit;
+   END"""
                      
-   END transactionBlock;
-
-   drop temporary table if exists tempNode;
-   commit;
-END"""
-                     
-allOp = [createNodeTable, createReplicaTable, dropIfExistsRep, replicaProc]
+allOp = [createNodeTable, createClusterTable, dropIfExistsProc, replicaProc]

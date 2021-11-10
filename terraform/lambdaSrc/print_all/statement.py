@@ -1,2 +1,2 @@
-getNodes = """select nodeIP, ipString, replicaCount from Nodes"""
-getReplicaOf = """select Master, Replica from ReplicaOf"""
+getNodes = """select ip, ipString from Nodes"""
+getReplicaOf = """select idCluster, node, attached from Cluster"""

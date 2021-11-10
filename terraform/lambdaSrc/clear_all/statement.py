@@ -1,2 +1,2 @@
-clearReplicaOf = """delete from ReplicaOf"""
+clearCluster = """delete from Cluster"""
 clearNodes = """delete from Nodes"""

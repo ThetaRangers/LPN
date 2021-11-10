@@ -1,1 +1,1 @@
-getIP = """select nodeIP from Nodes"""
+getIP = """select ip from Nodes"""

@@ -24,7 +24,7 @@ def handler_clear(event, context):
     logger.info("SUCCESS: Connection to RDS mysql instance succeeded")
 
     with conn.cursor() as cur:
-        cur.execute(clearReplicaOf)
+        cur.execute(clearCluster)
         cur.execute(clearNodes)
 
         json_data = { }

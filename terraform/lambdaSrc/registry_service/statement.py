@@ -1,1 +1,1 @@
-retParams = "SELECT @_replicaSet_3, @_replicaSet_4"
+retParams = "SELECT @_clusterSet_3, @_clusterSet_4"

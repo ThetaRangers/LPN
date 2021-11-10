@@ -111,13 +111,4 @@ func main() {
 			fmt.Printf("repIp %s RepIpString %s\n", r.Ip, r.IpString)
 		}
 	}
-
-	/*TODO order to parse:
-	-crashed:
-		-1 -> ipList old replicas
-		-0 -> check valid
-	-valid:
-		-1 -> ipList new replicas
-		-0 -> ipList empty. Not enough nodes to get n replicas. Retry.
-	*/
 }

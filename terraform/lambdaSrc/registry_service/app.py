@@ -32,7 +32,7 @@ def handler_registry(event, context):
 
     with conn.cursor() as cur:
         args = (ip, ipStr, n, 0, 0)
-        cur.callproc('replicaSet',args)
+        cur.callproc('clusterSet',args)
 
         rows = cur.fetchall()
         for row in rows:
