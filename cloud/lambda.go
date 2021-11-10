@@ -57,7 +57,7 @@ func RegisterToTheNetwork(ip string, ipStr string, n int, region string) Replica
 		log.Error(err)
 	}
 
-	b := []byte(result.Payload)
+	b := result.Payload
 	resp := ReplicaSet{}
 	if err := json.Unmarshal(b, &resp); err != nil {
 		panic(err)
@@ -79,26 +79,25 @@ func RegisterStub(ip, network string, n int, region string) []string {
 	return set
 }
 
-func RegisterStub2(ip, network string, n int, region string) ([]string, bool, bool) {
-	address := "172.17.0."
-	set := make([]string, 0)
+func RegisterStub2(ip, network string, n int, region string) ReplicaSet {
+	set := make([]IpStruct, 0)
+	valid := 0
 
 	if ip == "172.17.0.2" {
-		for i := 3; i < utils.Replicas+3; i++ {
-			abba := strconv.Itoa(i)
-			tmpAddr := address + abba
-
-			set = append(set, tmpAddr)
-		}
+		set = []IpStruct{{Ip: "172.17.0.3", IpString: "172.17.0.3"}, {Ip: "172.17.0.4", IpString: "172.168.1.4"},
+			{Ip: "172.17.0.5", IpString: "172.168.1.5"}, {Ip: "172.17.0.6", IpString: "172.168.1.6"}}
 	} else if ip == "172.17.0.11" {
-		set = []string{"172.17.0.7", "172.17.0.8", "172.17.0.9", "172.17.0.10"}
+		set = []IpStruct{{Ip: "172.17.0.7", IpString: "172.168.1.7"}, {Ip: "172.17.0.8", IpString: "172.17.0.8"},
+			{Ip: "172.17.0.9", IpString: "172.17.0.9"}, {Ip: "172.17.0.10", IpString: "172.168.1.10"}}
 	}
 
 	if ip == "172.17.0.7" || ip == "172.17.0.8" || ip == "172.17.0.9" || ip == "172.17.0.10" {
-		return append(set, "172.17.0.2"), true, false
+		set = append(set, IpStruct{Ip: "172.17.0.2", IpString: "172.17.0.2"})
 	}
 
-	return set, false, false
+	r := ReplicaSet{Valid: valid, Crashed: 0, IpList: set}
+
+	return r
 }
 
 func main() {

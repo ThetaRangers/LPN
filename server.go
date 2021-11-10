@@ -496,7 +496,6 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 		}
 
 		raftN = replication.InitializeRaft(ip.String(), database)
-		log.Println("LEFT OLD CLUSTER")
 	} else {
 		// If node doesn't take part in a cluster join it
 		if utils.Contains(received, ip.String()) {
@@ -709,22 +708,24 @@ func main() {
 	raftN = replication.InitializeRaft(ip.String(), database)
 	time.Sleep(3 * time.Second)
 
+	var crashed int
+	var registerCluster cloud.ReplicaSet
 	if regService {
 		// TODO maybe add support for ip6
 		ipStr := fmt.Sprintf("%s/p2p/%s", addrString, h.ID().Pretty())
-		ret := cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.Replicas, utils.AwsRegion)
+		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.Replicas, utils.AwsRegion)
 		fmt.Println(ipStr)
-		if ret.Crashed == 1 {
+		if registerCluster.Crashed == 1 {
 			// TODO resurrect
 			//h.ID() =
 		}
-		for ret.Valid != 1 {
+		for registerCluster.Valid != 1 {
 			log.Println("Waiting for replicas to connect...")
 			time.Sleep(30 * time.Second)
-			ret = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.Replicas, utils.AwsRegion)
+			registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.Replicas, utils.AwsRegion)
 		}
-		for j := 0; j < len(ret.IpList); j++ {
-			r := ret.IpList[j]
+		for j := 0; j < len(registerCluster.IpList); j++ {
+			r := registerCluster.IpList[j]
 			replicaSet = append(replicaSet, r.Ip)
 			err := config.BootstrapPeers.Set(r.IpString)
 			if err != nil {
@@ -732,63 +733,84 @@ func main() {
 			}
 		}
 	} else {
-		replicaSet, externalCluster, crashed := cloud.RegisterStub2(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
+		registerCluster = cloud.RegisterStub2(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
 
-		if crashed {
-			// Node is crashed need to rejoin the cluster
+		isCrashed := os.Getenv("CRASHED")
+		if isCrashed == "y" {
+			log.Println("NODE HAS CRASHED")
+			crashed = 1
+		} else {
+			crashed = 2
+		}
+	}
 
-		} else if externalCluster {
-			// If external to the cluster
+	ipList := registerCluster.IpList
 
-			target := replicaSet[0]
+	//TODO remove this
+	for _, n := range ipList {
+		replicaSet = append(replicaSet, n.Ip)
+	}
 
-			// TODO try to contact others
-			log.Println("Requesting join on cluster ", replicaSet)
-			c, _, _ := ContactServer(target)
+	if crashed == 1 {
+		// Node is crashed need to rejoin the cluster
+		// TODO retry
+		c, _, _ := ContactServer(ipList[0].Ip)
+		_, err = c.RequestJoin(context.Background(), &pb.RequestJoinMessage{Ip: ip.String()})
+		if err != nil {
+			log.Fatal("ERROR IN JOINING", err)
+		}
 
-			res, err := c.RequestJoin(context.Background(), &pb.RequestJoinMessage{Ip: ip.String()})
+	} else if len(ipList) == (utils.N - 1) {
+		log.Println("INITIATING CLUSTER")
+		// If master to a cluster
+		cluster = make([]string, 0)
+		cluster = append(cluster, ip.String())
+		cluster = append(cluster, replicaSet...)
+
+		log.Println("Replicas found: ", replicaSet)
+		log.Println("Cluster: ", cluster)
+
+		for _, node := range ipList {
+			var err error
+			var c pb.OperationsClient
+
+			log.Printf("Asking %s to join", node.Ip)
+
+			for err != nil || c == nil {
+				c, _, err = ContactServer(node.Ip)
+				log.Println("Failed to contact, trying again...")
+			}
+
+			_, err = c.Join(context.Background(), &pb.JoinMessage{Cluster: cluster})
 			if err != nil {
-				log.Println("ERROR", err)
+				log.Fatal("ERROR in requesting join", err)
 			}
 
-			// TODO change
-			cluster = res.GetCluster()
-		} else if len(replicaSet) != 0 {
-			// If master to a cluster
-			cluster = make([]string, 0)
-			cluster = append(cluster, ip.String())
-			cluster = append(cluster, replicaSet...)
-
-			log.Println("Replicas found: ", replicaSet)
-			log.Println("Cluster: ", cluster)
-
-			for _, addr := range replicaSet {
-				var err error
-				var c pb.OperationsClient
-
-				log.Printf("Asking %s to join", addr)
-
-				for err != nil || c == nil {
-					c, _, err = ContactServer(addr)
-					log.Println("Failed to contact, trying again...")
-				}
-
-				log.Println(c, context.Background(), &pb.JoinMessage{Cluster: cluster})
-				_, err = c.Join(context.Background(), &pb.JoinMessage{Cluster: cluster})
-				if err != nil {
-					log.Fatal("ERROR in requesting join", err)
-				}
-
-				log.Printf("Adding %s to raft, leader is %s", addr, raftN.GetLeader())
-				err = raftN.AddNode(addr)
-				if err != nil {
-					log.Fatal(err)
-				}
-				log.Printf("Done adding %s to raft", addr)
-
+			log.Printf("Adding %s to raft, leader is %s", node.Ip, raftN.GetLeader())
+			err = raftN.AddNode(node.Ip)
+			if err != nil {
+				log.Fatal(err)
 			}
+			log.Printf("Done adding %s to raft", node.Ip)
 
 		}
+
+	} else if len(replicaSet) >= utils.N {
+		log.Println("HMMMMMMMM")
+		// If external to the cluster
+		target := ipList[0].Ip
+
+		// TODO try to contact others
+		log.Println("Requesting join on cluster ", replicaSet)
+		c, _, _ := ContactServer(target)
+
+		res, err := c.RequestJoin(context.Background(), &pb.RequestJoinMessage{Ip: ip.String()})
+		if err != nil {
+			log.Println("ERROR", err)
+		}
+
+		// TODO change
+		cluster = res.GetCluster()
 	}
 
 	kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
