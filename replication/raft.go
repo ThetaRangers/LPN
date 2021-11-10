@@ -2,6 +2,7 @@ package replication
 
 import (
 	"SDCC/database"
+	"SDCC/utils"
 	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/raft"
@@ -128,7 +129,7 @@ func (r RaftStruct) RemoveNode(ip string) error {
 	return nil
 }
 
-func InitializeRaft(ip string, db database.Database) *RaftStruct {
+func InitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutine) *RaftStruct {
 	os.RemoveAll("raft-data")
 	err := os.Mkdir("raft-data", 0755)
 	if err != nil {
@@ -141,7 +142,7 @@ func InitializeRaft(ip string, db database.Database) *RaftStruct {
 
 	raftConf.SnapshotThreshold = 1024
 
-	fsmStore := NewFSM(db)
+	fsmStore := NewFSM(db, cluster)
 
 	tcpTimeout := timeout
 	var raftBinAddr = fmt.Sprintf("%s:%d", ip, raftPort)

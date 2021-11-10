@@ -2,6 +2,7 @@ package replication
 
 import (
 	"SDCC/database"
+	"SDCC/utils"
 	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/raft"
@@ -18,7 +19,6 @@ type CommandPayload struct {
 
 type ApplyResponse struct {
 	Error error
-	Data  [][]byte
 }
 
 // snapshotNoop handle noop snapshot
@@ -40,6 +40,7 @@ func newSnapshotNoop() (raft.FSMSnapshot, error) {
 
 type FSM struct {
 	db database.Database
+	cluster utils.ClusterRoutine
 }
 
 // Apply log is invoked once a log entry is committed.
@@ -60,18 +61,25 @@ func (f FSM) Apply(log *raft.Log) interface{} {
 		case "PUT":
 			return &ApplyResponse{
 				Error: f.db.Put(payload.Key, payload.Value),
-				Data:  payload.Value,
 			}
 		case "APPEND":
 			_, err := f.db.Append(payload.Key, payload.Value)
 			return &ApplyResponse{
 				Error: err,
-				Data:  nil,
 			}
 		case "DELETE":
 			return &ApplyResponse{
 				Error: f.db.Del(payload.Key),
-				Data:  nil,
+			}
+		case "JOIN":
+			f.cluster.Join(string(payload.Value[0]))
+			return &ApplyResponse{
+				Error: nil,
+			}
+		case "LEAVE":
+			f.cluster.Leave(string(payload.Value[0]))
+			return &ApplyResponse{
+				Error: nil,
 			}
 		}
 	}
@@ -130,8 +138,9 @@ func (f FSM) Restore(rClose io.ReadCloser) error {
 }
 
 // NewFSM raft.FSM implementation using badgerDB
-func NewFSM(database database.Database) raft.FSM {
+func NewFSM(database database.Database, cluster utils.ClusterRoutine) raft.FSM {
 	return &FSM{
 		db: database,
+		cluster: cluster,
 	}
 }

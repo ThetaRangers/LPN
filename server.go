@@ -45,7 +45,7 @@ type server struct {
 type addrList []multiaddr.Multiaddr
 
 var replicaSet []string
-var cluster []string
+var cluster utils.ClusterRoutine
 
 var database db.Database
 var ip net.IP
@@ -470,7 +470,7 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 	received := in.GetCluster()
 	log.Println("Received join request to ", received)
 
-	if len(cluster) != 0 {
+	if cluster.Len() != 0 {
 		// If node is part of a cluster and needs to transfer
 		// TODO transfer cluster
 
@@ -495,15 +495,7 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 			log.Fatal("ERROR IN SHUTDOWN", err)
 		}
 
-		raftN = replication.InitializeRaft(ip.String(), database)
-	} else {
-		// If node doesn't take part in a cluster join it
-		if utils.Contains(received, ip.String()) {
-			cluster = append(cluster, ip.String())
-			cluster = append(cluster, utils.RemoveFromList(received, ip.String())...)
-		} else {
-			cluster = received
-		}
+		raftN = replication.InitializeRaft(ip.String(), database, cluster)
 	}
 
 	return &pb.Ack{Msg: "Ok"}, nil
@@ -545,7 +537,7 @@ func (s *server) RequestJoin(ctx context.Context, in *pb.RequestJoinMessage) (*p
 		}
 	}
 
-	return &pb.JoinMessage{Cluster: cluster}, nil
+	return &pb.JoinMessage{ }, nil
 }
 
 func (s *server) Ping(_ context.Context, _ *pb.PingMessage) (*pb.Ack, error) {
@@ -705,7 +697,8 @@ func main() {
 	}
 
 	// Initialize Raft replication
-	raftN = replication.InitializeRaft(ip.String(), database)
+	cluster = utils.NewClusterRoutine()
+	raftN = replication.InitializeRaft(ip.String(), database, cluster)
 	time.Sleep(3 * time.Second)
 
 	var crashed int
@@ -716,8 +709,7 @@ func main() {
 		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.Replicas, utils.AwsRegion)
 		fmt.Println(ipStr)
 		if registerCluster.Crashed == 1 {
-			// TODO resurrect
-			//h.ID() =
+			crashed = 1
 		}
 		for registerCluster.Valid != 1 {
 			log.Println("Waiting for replicas to connect...")
@@ -763,9 +755,10 @@ func main() {
 	} else if len(ipList) == (utils.N - 1) {
 		log.Println("INITIATING CLUSTER")
 		// If master to a cluster
-		cluster = make([]string, 0)
-		cluster = append(cluster, ip.String())
-		cluster = append(cluster, replicaSet...)
+		cluster.Join(ip.String())
+		for _, addr := range replicaSet {
+			cluster.Join(addr)
+		}
 
 		log.Println("Replicas found: ", replicaSet)
 		log.Println("Cluster: ", cluster)
@@ -781,7 +774,7 @@ func main() {
 				log.Println("Failed to contact, trying again...")
 			}
 
-			_, err = c.Join(context.Background(), &pb.JoinMessage{Cluster: cluster})
+			_, err = c.Join(context.Background(), &pb.JoinMessage{ })
 			if err != nil {
 				log.Fatal("ERROR in requesting join", err)
 			}
@@ -804,13 +797,11 @@ func main() {
 		log.Println("Requesting join on cluster ", replicaSet)
 		c, _, _ := ContactServer(target)
 
-		res, err := c.RequestJoin(context.Background(), &pb.RequestJoinMessage{Ip: ip.String()})
+		_, err := c.RequestJoin(context.Background(), &pb.RequestJoinMessage{Ip: ip.String()})
 		if err != nil {
 			log.Println("ERROR", err)
 		}
 
-		// TODO change
-		cluster = res.GetCluster()
 	}
 
 	kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
