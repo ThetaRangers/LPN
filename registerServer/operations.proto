@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option go_package = "github.com/ThetaRangers/SDCC/registerServer";
+
+package registerServer;
+
+service Operations {
+  rpc Register (RegisterMessage) returns (Cluster) {}
+}
+
+message RegisterMessage {
+    string ip = 1;
+    string nodeId = 2;
+}
+
+message Cluster {
+  repeated string addresses = 1;
+  repeated string  nodeIdS = 2;
+  bool crashed = 3;
+}

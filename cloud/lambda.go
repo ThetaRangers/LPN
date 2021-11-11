@@ -1,14 +1,15 @@
 package cloud
 
 import (
-	"SDCC/utils"
+	pb "SDCC/registerServer"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/opentracing/opentracing-go/log"
-	"strconv"
+	"google.golang.org/grpc"
 )
 
 type RequestNetwork struct {
@@ -66,17 +67,34 @@ func RegisterToTheNetwork(ip string, ipStr string, n int, region string) Replica
 	return resp
 }
 
-func RegisterStub(ip, network string, n int, region string) []string {
-	address := "172.17.0."
-	set := make([]string, 0)
-	for i := 2; i < utils.Replicas+3; i++ {
-		abba := strconv.Itoa(i)
-		tmpAddr := address + abba
-		if tmpAddr != ip {
-			set = append(set, tmpAddr)
-		}
+func RegisterStub(ip string, ipStr string, n int, region string) ReplicaSet {
+	addr := "192.168.1.36" + ":50052"
+
+	conn, err := grpc.DialContext(context.Background(), addr, grpc.WithInsecure(), grpc.WithBlock())
+	if err != nil {
+		log.Error(err)
 	}
-	return set
+
+	c := pb.NewOperationsClient(conn)
+
+	res, _ := c.Register(context.Background(), &pb.RegisterMessage{Ip: ip, NodeId: ipStr})
+	crashed := res.GetCrashed()
+	addresses := res.GetAddresses()
+	nodeIds := res.GetNodeIdS()
+
+	i := 0
+	if crashed {
+		i = 1
+	}
+
+	ipList := make([]IpStruct, 0)
+
+	for index, k := range addresses {
+		ipList = append(ipList, IpStruct{Ip: k, IpString: nodeIds[index]})
+	}
+
+	r := ReplicaSet{Valid: 0, Crashed: i, IpList: ipList}
+	return r
 }
 
 func RegisterStub2(ip, network string, n int, region string) ReplicaSet {

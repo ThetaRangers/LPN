@@ -28,7 +28,7 @@ import (
 const (
 	port       = ":50051"
 	mask       = "172.17.0.0/24"
-	regService = false
+	regService = 1
 )
 
 type Config struct {
@@ -537,7 +537,7 @@ func (s *server) RequestJoin(ctx context.Context, in *pb.RequestJoinMessage) (*p
 		}
 	}
 
-	return &pb.JoinMessage{ }, nil
+	return &pb.JoinMessage{}, nil
 }
 
 func (s *server) Ping(_ context.Context, _ *pb.PingMessage) (*pb.Ack, error) {
@@ -703,19 +703,31 @@ func main() {
 
 	var crashed int
 	var registerCluster cloud.ReplicaSet
-	if regService {
+	if regService == 0 {
 		// TODO maybe add support for ip6
 		ipStr := fmt.Sprintf("%s/p2p/%s", addrString, h.ID().Pretty())
-		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.Replicas, utils.AwsRegion)
+		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.N, utils.AwsRegion)
 		fmt.Println(ipStr)
 		if registerCluster.Crashed == 1 {
 			crashed = 1
 		}
-		for registerCluster.Valid != 1 {
-			log.Println("Waiting for replicas to connect...")
-			time.Sleep(30 * time.Second)
-			registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.Replicas, utils.AwsRegion)
+
+		for j := 0; j < len(registerCluster.IpList); j++ {
+			r := registerCluster.IpList[j]
+			replicaSet = append(replicaSet, r.Ip)
+			err := config.BootstrapPeers.Set(r.IpString)
+			if err != nil {
+				panic(err)
+			}
 		}
+	} else if regService == 1 {
+		ipStr := fmt.Sprintf("%s/p2p/%s", addrString, h.ID().Pretty())
+
+		registerCluster = cloud.RegisterStub(ip.String(), ipStr, utils.N, utils.AwsRegion)
+		if registerCluster.Crashed == 1 {
+			crashed = 1
+		}
+
 		for j := 0; j < len(registerCluster.IpList); j++ {
 			r := registerCluster.IpList[j]
 			replicaSet = append(replicaSet, r.Ip)
@@ -734,14 +746,14 @@ func main() {
 		} else {
 			crashed = 2
 		}
+
+		for j := 0; j < len(registerCluster.IpList); j++ {
+			r := registerCluster.IpList[j]
+			replicaSet = append(replicaSet, r.Ip)
+		}
 	}
 
 	ipList := registerCluster.IpList
-
-	//TODO remove this
-	for _, n := range ipList {
-		replicaSet = append(replicaSet, n.Ip)
-	}
 
 	if crashed == 1 {
 		// Node is crashed need to rejoin the cluster
@@ -774,7 +786,7 @@ func main() {
 				log.Println("Failed to contact, trying again...")
 			}
 
-			_, err = c.Join(context.Background(), &pb.JoinMessage{ })
+			_, err = c.Join(context.Background(), &pb.JoinMessage{})
 			if err != nil {
 				log.Fatal("ERROR in requesting join", err)
 			}
