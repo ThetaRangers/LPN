@@ -106,7 +106,7 @@ func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (
 	nodeId := in.GetNodeId()
 
 	i, present := isRegistered(ip)
-	if present {
+	if present && len(list) >= (utils.N-1) {
 		// If it is present in the network
 		// Update NodeID
 		list[i].NodeId = nodeId
@@ -118,7 +118,9 @@ func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (
 
 	if len(list) < (utils.N - 1) {
 		// If not enough
-		list = append(list, RegisterStruct{Ip: ip, NodeId: nodeId, Cluster: -1, Attached: false})
+		if !present {
+			list = append(list, RegisterStruct{Ip: ip, NodeId: nodeId, Cluster: -1, Attached: false})
+		}
 
 		lock.Unlock()
 		return &pb.Cluster{Addresses: make([]string, 0), NodeIdS: make([]string, 0), Crashed: false}, nil
