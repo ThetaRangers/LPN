@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/dgraph-io/badger"
+	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/multiformats/go-multiaddr"
@@ -52,7 +53,10 @@ var ip net.IP
 var address string
 var channel chan migration.KeyOp
 var raftN *replication.RaftStruct
-var startedDht = false
+
+var config = Config{}
+var bootstrapNodes []string
+var h host.Host
 
 func (al *addrList) String() string {
 	strs := make([]string, len(*al))
@@ -456,9 +460,6 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 
 // Join Raft leader calls this to ask to Join the cluster
 func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) {
-	received := in.GetCluster()
-	log.Println("Received join request to ", received)
-
 	if cluster.Len() != 0 {
 		// If node is part of a cluster and needs to transfer
 		// TODO transfer cluster
@@ -485,6 +486,19 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 		}
 
 		raftN = replication.ReInitializeRaft(ip.String(), database, cluster)
+	} else {
+		bootstrap := in.GetBootstrap()
+		log.Println("Joining DHT with bootstrap", bootstrap)
+		err := config.BootstrapPeers.Set(bootstrap)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
+		kdht.Validator = NullValidator{}
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	return &pb.Ack{Msg: "Ok"}, nil
@@ -588,6 +602,31 @@ func migrationThread(ctx context.Context) {
 	}
 }
 
+func initializeHost(ctx context.Context) string {
+	var addrString string
+	var err error
+
+	flag.Int64Var(&config.Seed, "seed", 0, "Seed value for generating a PeerID, 0 is random")
+
+	h, err = ipfs.NewHost(ctx, config.Seed, config.Port)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("Host ID: %s", h.ID().Pretty())
+	log.Printf("DHT addresses:")
+	for _, addr := range h.Addrs() {
+		log.Printf("  %s/p2p/%s", addr, h.ID().Pretty())
+		if strings.Contains(addr.String(), ip.String()) {
+			addrString = addr.String()
+		}
+	}
+
+	ipStr := fmt.Sprintf("%s/p2p/%s", addrString, h.ID().Pretty())
+
+	return ipStr
+}
+
 func main() {
 	//Get ip address
 	iFaces, err := net.Interfaces()
@@ -636,78 +675,33 @@ func main() {
 	}
 
 	// Joining the DHT
-	config := Config{}
-	flag.Int64Var(&config.Seed, "seed", 0, "Seed value for generating a PeerID, 0 is random")
 
 	//For debugging
 	if len(bootstrap) == 0 {
-		flag.Var(&config.BootstrapPeers, "peer", "Peer multiaddress for peer discovery")
+		//flag.Var(&config.BootstrapPeers, "peer", "Peer multiaddress for peer discovery")
 	} else {
 		//addr, _ := multiaddr.NewMultiaddr(bootstrap)
-		config.BootstrapPeers.Set(bootstrap)
+		//config.BootstrapPeers.Set(bootstrap)
 	}
 
-	flag.IntVar(&config.Port, "port", 0, "")
-	flag.Parse()
-
-	ctx := context.Background()
-
-	h, err := ipfs.NewHost(ctx, config.Seed, config.Port)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var addrString string
-	log.Printf("Host ID: %s", h.ID().Pretty())
-	log.Printf("DHT addresses:")
-	for _, addr := range h.Addrs() {
-		log.Printf("  %s/p2p/%s", addr, h.ID().Pretty())
-		if strings.Contains(addr.String(), ip.String()) {
-			addrString = addr.String()
-		}
-	}
+	//flag.IntVar(&config.Port, "port", 0, "")
+	//flag.Parse()
 
 	// Initialize Raft replication
 	cluster = utils.NewClusterRoutine()
 	raftN = replication.InitializeRaft(ip.String(), database, cluster)
 	time.Sleep(3 * time.Second)
 
-	var crashed int
+	ctx := context.Background()
+	ipStr := initializeHost(ctx)
+
 	var registerCluster cloud.ReplicaSet
 	if regService == 0 {
 		// TODO maybe add support for ip6
-		ipStr := fmt.Sprintf("%s/p2p/%s", addrString, h.ID().Pretty())
 		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.N, utils.AwsRegion)
-		fmt.Println(ipStr)
-		if registerCluster.Crashed == 1 {
-			crashed = 1
-		}
-
-		for j := 0; j < len(registerCluster.IpList); j++ {
-			r := registerCluster.IpList[j]
-			replicaSet = append(replicaSet, r.Ip)
-			err := config.BootstrapPeers.Set(r.IpString)
-			if err != nil {
-				panic(err)
-			}
-		}
 	} else if regService == 1 {
-		ipStr := fmt.Sprintf("%s/p2p/%s", addrString, h.ID().Pretty())
-
 		registerCluster = cloud.RegisterStub(ip.String(), ipStr, utils.N, utils.AwsRegion)
-		if registerCluster.Crashed == 1 {
-			crashed = 1
-		}
-
-		for j := 0; j < len(registerCluster.IpList); j++ {
-			r := registerCluster.IpList[j]
-			replicaSet = append(replicaSet, r.Ip)
-			err := config.BootstrapPeers.Set(r.IpString)
-			if err != nil {
-				panic(err)
-			}
-		}
-	} else {
+	} /*else {
 		registerCluster = cloud.RegisterStub2(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
 
 		isCrashed := os.Getenv("CRASHED")
@@ -722,11 +716,30 @@ func main() {
 			r := registerCluster.IpList[j]
 			replicaSet = append(replicaSet, r.Ip)
 		}
+	}*/
+
+	// Ready to start dht
+	if len(registerCluster.IpList) > 0 {
+		log.Println("HEREAAAAAAAAAAAAAAAAAAAAA")
+		for j := 0; j < len(registerCluster.IpList); j++ {
+			r := registerCluster.IpList[j]
+			replicaSet = append(replicaSet, r.Ip)
+			err := config.BootstrapPeers.Set(r.IpString)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
+		kdht.Validator = NullValidator{}
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	ipList := registerCluster.IpList
 
-	if crashed == 1 {
+	if registerCluster.Crashed == 1 {
 		// Node is crashed need to rejoin the cluster
 		// TODO retry
 		c, _, _ := ContactServer(ipList[0].Ip)
@@ -757,7 +770,7 @@ func main() {
 				log.Println("Failed to contact, trying again...")
 			}
 
-			_, err = c.Join(context.Background(), &pb.JoinMessage{})
+			_, err = c.Join(context.Background(), &pb.JoinMessage{Bootstrap: ipStr})
 			if err != nil {
 				log.Fatal("ERROR in requesting join", err)
 			}
@@ -785,12 +798,6 @@ func main() {
 			log.Println("ERROR", err)
 		}
 
-	}
-
-	kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
-	kdht.Validator = NullValidator{}
-	if err != nil {
-		log.Fatal(err)
 	}
 
 	go func() {
