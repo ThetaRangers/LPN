@@ -142,6 +142,16 @@ func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (
 	}
 }
 
+func (s *serverRegister) GetAllNodes(ctx context.Context, in *pb.EmptyMessage) (*pb.NodesIp, error) {
+	tmp := make([]string, 0)
+
+	for _, v := range list {
+		tmp = append(tmp, v.Ip)
+	}
+
+	return &pb.NodesIp{Addresses: tmp}, nil
+}
+
 func main() {
 	lis, err := net.Listen("tcp", ":50052")
 	if err != nil {

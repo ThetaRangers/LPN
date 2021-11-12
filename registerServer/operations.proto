@@ -6,6 +6,7 @@ package registerServer;
 
 service Operations {
   rpc Register (RegisterMessage) returns (Cluster) {}
+  rpc GetAllNodes(EmptyMessage) returns (NodesIp) {}
 }
 
 message RegisterMessage {
@@ -17,4 +18,10 @@ message Cluster {
   repeated string addresses = 1;
   repeated string  nodeIdS = 2;
   bool crashed = 3;
+}
+
+message EmptyMessage {}
+
+message NodesIp {
+  repeated string addresses = 1;
 }
