@@ -1,41 +1,51 @@
 version: "3.9"
 services:
-  cluster1-app1:
+  app1:
     image: app
     network_mode: bridge
     environment:
       - BOOTSTRAP_PEERS=${BOOTSTRAP}
-  cluster1-app2:
+  app2:
     image: app
     network_mode: bridge
     environment:
       - BOOTSTRAP_PEERS=${BOOTSTRAP}
-  cluster1-app3:
+  app3:
     image: app
     network_mode: bridge
     environment:
       - BOOTSTRAP_PEERS=${BOOTSTRAP}
-  cluster1-app4:
+  app4:
     image: app
     network_mode: bridge
     environment:
       - BOOTSTRAP_PEERS=${BOOTSTRAP}
-  cluster2-app5:
+  app5:
     image: app
     network_mode: bridge
     environment:
       - BOOTSTRAP_PEERS=${BOOTSTRAP}
-  cluster2-app6:
+  app6:
     image: app
     network_mode: bridge
     environment:
       - BOOTSTRAP_PEERS=${BOOTSTRAP}
-  cluster2-app7:
+  app7:
     image: app
     network_mode: bridge
     environment:
       - BOOTSTRAP_PEERS=${BOOTSTRAP}
-  cluster2-app8:
+  app8:
+    image: app
+    network_mode: bridge
+    environment:
+      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+  app9:
+    image: app
+    network_mode: bridge
+    environment:
+      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+  app10:
     image: app
     network_mode: bridge
     environment:

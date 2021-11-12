@@ -28,7 +28,7 @@ import (
 const (
 	port       = ":50051"
 	mask       = "172.17.0.0/24"
-	regService = 42
+	regService = 1
 )
 
 type Config struct {
@@ -52,6 +52,7 @@ var ip net.IP
 var address string
 var channel chan migration.KeyOp
 var raftN *replication.RaftStruct
+var startedDht = false
 
 func (al *addrList) String() string {
 	strs := make([]string, len(*al))
@@ -483,7 +484,7 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 			log.Fatal("ERROR IN SHUTDOWN", err)
 		}
 
-		raftN = replication.InitializeRaft(ip.String(), database, cluster)
+		raftN = replication.ReInitializeRaft(ip.String(), database, cluster)
 	}
 
 	return &pb.Ack{Msg: "Ok"}, nil
@@ -631,7 +632,7 @@ func main() {
 
 	bootstrap := os.Getenv("BOOTSTRAP_PEERS")
 	if len(bootstrap) != 0 {
-		log.Println("Found bootstrapp peer at ", bootstrap)
+		log.Println("Found bootstrap peer at ", bootstrap)
 	}
 
 	// Joining the DHT
@@ -762,6 +763,7 @@ func main() {
 			}
 
 			log.Printf("Adding %s to raft, leader is %s", node.Ip, raftN.GetLeader())
+
 			err = raftN.AddNode(node.Ip)
 			if err != nil {
 				log.Fatal(err)
@@ -771,7 +773,6 @@ func main() {
 		}
 
 	} else if len(replicaSet) >= utils.N {
-		log.Println("HMMMMMMMM")
 		// If external to the cluster
 		target := ipList[0].Ip
 
@@ -803,7 +804,6 @@ func main() {
 				opts.PrefetchSize = 10
 				it := txn.NewIterator(opts)
 				defer it.Close()
-				log.Println("Begin iteration", it.Valid())
 				for it.Rewind(); it.Valid(); it.Next() {
 					item := it.Item()
 					k := item.Key()

@@ -121,12 +121,28 @@ func (r RaftStruct) AddNodes(addresses []string) error {
 }
 
 func (r RaftStruct) RemoveNode(ip string) error {
+	// TODO is it correct?
+	// Maybe needed to reset cluster for master when other nodes are leaving
+	err := os.Remove("raft-data/stablestore")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	f := r.RaftNode.RemoveServer(raft.ServerID(ip), 0, 0)
 	if f.Error() != nil {
 		return f.Error()
 	}
 
 	return nil
+}
+
+func ReInitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutine) *RaftStruct {
+	err := os.RemoveAll("raft-data")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return InitializeRaft(ip, db, cluster)
 }
 
 func InitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutine) *RaftStruct {

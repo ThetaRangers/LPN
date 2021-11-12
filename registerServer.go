@@ -91,6 +91,7 @@ func createCluster() ([]string, []string, int) {
 			tmpNodeId = append(tmpNodeId, v.NodeId)
 
 			list[index].Cluster = maxCluster
+			list[index].Attached = false
 		}
 	}
 
