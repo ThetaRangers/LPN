@@ -28,7 +28,7 @@ import (
 const (
 	port       = ":50051"
 	mask       = "172.17.0.0/24"
-	regService = 1
+	regService = 42
 )
 
 type Config struct {
@@ -121,19 +121,20 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		}
 	}
 
-	var targetCluster []string
-	json.Unmarshal(value, &targetCluster)
+	var target string
+	json.Unmarshal(value, &target)
 
-	if !utils.Contains(targetCluster, address) {
+	if !cluster.Contains(target) {
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.External}
 
 		// Try node list
-		c, _, err := ContactServer(targetCluster[0])
+		c, _, err := ContactServer(target)
 		i := 1
 		for err != nil {
 			//if i > list.size() break;
-			//TODO skip to next one in the list
-			c, _, err = ContactServer(targetCluster[i])
+			// TODO skip to next one in the list
+			//c, _, err = ContactServer(target[i])
+			// TODO get cluster from dht
 			if err != nil {
 				i++
 				continue
@@ -161,8 +162,8 @@ func (s *server) GetInternal(ctx context.Context, in *pb.Key) (*pb.Value, error)
 		return &pb.Value{Value: [][]byte{}}, err
 	}
 
-	var targetCluster []string
-	json.Unmarshal(value, &targetCluster)
+	var target string
+	json.Unmarshal(value, &target)
 
 	val, _ := database.Get(in.GetKey())
 	return &pb.Value{Value: val}, nil
@@ -197,7 +198,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 				return &pb.Ack{Msg: "Err"}, err
 			}
 
-			dhtInput, _ := json.Marshal(cluster)
+			dhtInput, _ := json.Marshal(address)
 			err := kdht.PutValue(ctxDht, string(in.GetKey()), dhtInput)
 			if err != nil {
 				return &pb.Ack{Msg: "Err"}, err
@@ -210,20 +211,21 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	}
 
 	//Found in the dht
-	var targetCluster []string
-	json.Unmarshal(value, &targetCluster)
+	var target string
+	json.Unmarshal(value, &target)
 
 	// If not in Raft cluster
-	if !utils.Contains(targetCluster, address) {
+	if !cluster.Contains(target) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
-		c, _, err := ContactServer(targetCluster[0])
+		c, _, err := ContactServer(target)
 		i := 1
 		for err != nil {
-			c, _, err = ContactServer(targetCluster[i])
+			// TODO get cluster from dht
+			//c, _, err = ContactServer(target[i])
 			if err != nil {
 				i++
-				if i > len(targetCluster) {
+				if i > len(target) {
 					// TODO errore
 					return &pb.Ack{Msg: "Err"}, errors.New("no replica available")
 				} else {
@@ -312,18 +314,19 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		return nil, err
 	}
 
-	var targetCluster []string
-	json.Unmarshal(value, &targetCluster)
+	var target string
+	json.Unmarshal(value, &target)
 
 	//Found in the dht
-	if !utils.Contains(targetCluster, address) {
+	if !cluster.Contains(target) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
 
-		c, _, _ := ContactServer(targetCluster[0])
+		c, _, _ := ContactServer(target)
 		i := 1
 		for err != nil {
-			c, _, err = ContactServer(targetCluster[i])
+			// TODO get cluster from dht
+			//c, _, err = ContactServer(target[i])
 			if err != nil {
 				i++
 				continue
@@ -371,68 +374,53 @@ func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, 
 // Del function to delete
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	key := string(in.GetKey())
-
-	//Delete in the DHT
+	// Get responsible from dht
 	value, err := kdht.GetValue(ctx, key)
-	if err != nil {
-		if err == routing.ErrNotFound || len(value) == 0 {
-			// Not found in the dht
-			//Can return
-			return &pb.Ack{Msg: "Ok"}, nil
-		}
-
+	if err == routing.ErrNotFound || len(value) == 0 {
+		// Not found in the dht or already deleted
+		return &pb.Ack{Msg: "Ok"}, nil
+	} else if err != nil {
 		return &pb.Ack{Msg: "Err"}, err
 	}
 
-	var targetCluster []string
-	json.Unmarshal(value, &targetCluster)
+	var target string
+	json.Unmarshal(value, &target)
 
-	//Found in the dht
-	if targetCluster[0] != address {
-		c, _, _ := ContactServer(targetCluster[0])
+	if !cluster.Contains(target) {
+		c, _, _ := ContactServer(target)
 		i := 1
 		for err != nil {
-			c, _, err = ContactServer(targetCluster[i])
+			// TODO retry on replicaset
+			//c, _, err = ContactServer(target[i])
 			if err != nil {
 				i++
 				continue
 			}
 		}
 
-		_, err := c.Del(ctx, &pb.Key{Key: in.GetKey()})
-		if err != nil {
-			return &pb.Ack{Msg: "Connection error"}, nil
-		}
+		return c.DelInternal(ctx, &pb.Key{Key: in.GetKey()})
 	} else {
-
-		leader := raftN.GetLeader()
-		if leader == ip.String() {
-			err = raftN.Del(in.GetKey())
-		} else {
-			c, _, _ := ContactServer(leader)
-
-			_, err = c.Del(context.Background(), &pb.Key{Key: in.GetKey()})
-		}
-		if err != nil {
-			return &pb.Ack{Msg: "Err"}, err
-		}
-
-		err = kdht.PutValue(ctx, key, []byte(""))
-		if err != nil {
-			return &pb.Ack{Msg: "Err"}, err
-		}
+		return s.DelInternal(ctx, in)
 	}
-
-	return &pb.Ack{Msg: "Ok"}, nil
 }
 
-// DeleteFromReplicas internal function to delete keys
-func (s *server) DeleteFromReplicas(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
-	err := database.Del(in.GetKey())
+func (s *server) DelInternal(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
+	var err error
+	leader := raftN.GetLeader()
+	if leader == address {
+		err = raftN.Del(in.GetKey())
+	} else {
+		c, _, _ := ContactServer(leader)
+		_, err = c.DelInternal(context.Background(), &pb.Key{Key: in.GetKey()})
+	}
 	if err != nil {
 		return &pb.Ack{Msg: "Err"}, err
 	}
 
+	err = kdht.PutValue(ctx, string(in.GetKey()), []byte(""))
+	if err != nil {
+		return &pb.Ack{Msg: "Err"}, err
+	}
 	return &pb.Ack{Msg: "Ok"}, nil
 }
 
@@ -544,24 +532,6 @@ func (s *server) Ping(_ context.Context, _ *pb.PingMessage) (*pb.Ack, error) {
 	return &pb.Ack{Msg: "Pong"}, nil
 }
 
-func callReplicate(ctx context.Context, ip string, key []byte, value [][]byte, version uint64) error {
-	c, _, err := ContactServer(ip)
-	if err != nil {
-		return err
-	}
-
-	ack, err := c.Replicate(ctx, &pb.KeyValueVersion{Key: key, Value: value, Version: version})
-	if err != nil {
-		return err
-	}
-
-	if ack.GetMsg() != "Ok" {
-		// TODO
-		return errors.New("ack not ok")
-	}
-	return nil
-}
-
 func ContainsNetwork(mask string, ip net.IP) (bool, error) {
 	_, subnet, err := net.ParseCIDR(mask)
 	if err != nil {
@@ -586,11 +556,11 @@ func migrationThread(ctx context.Context) {
 				continue
 			}
 
-			var targetCluster []string
-			json.Unmarshal(value, &targetCluster)
+			var target string
+			json.Unmarshal(value, &target)
 
 			// Try to contact server
-			c, _, err := ContactServer(targetCluster[0])
+			c, _, err := ContactServer(target)
 			if err != nil {
 				continue
 			}

@@ -26,8 +26,6 @@ type OperationsClient interface {
 	PutInternal(ctx context.Context, in *KeyValue, opts ...grpc.CallOption) (*Ack, error)
 	AppendInternal(ctx context.Context, in *KeyValue, opts ...grpc.CallOption) (*Ack, error)
 	DelInternal(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error)
-	Replicate(ctx context.Context, in *KeyValueVersion, opts ...grpc.CallOption) (*Ack, error)
-	DeleteFromReplicas(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error)
 	Migration(ctx context.Context, in *KeyCost, opts ...grpc.CallOption) (*Outcome, error)
 	Ping(ctx context.Context, in *PingMessage, opts ...grpc.CallOption) (*Ack, error)
 	Join(ctx context.Context, in *JoinMessage, opts ...grpc.CallOption) (*Ack, error)
@@ -115,24 +113,6 @@ func (c *operationsClient) DelInternal(ctx context.Context, in *Key, opts ...grp
 	return out, nil
 }
 
-func (c *operationsClient) Replicate(ctx context.Context, in *KeyValueVersion, opts ...grpc.CallOption) (*Ack, error) {
-	out := new(Ack)
-	err := c.cc.Invoke(ctx, "/operations.Operations/Replicate", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *operationsClient) DeleteFromReplicas(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error) {
-	out := new(Ack)
-	err := c.cc.Invoke(ctx, "/operations.Operations/DeleteFromReplicas", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *operationsClient) Migration(ctx context.Context, in *KeyCost, opts ...grpc.CallOption) (*Outcome, error) {
 	out := new(Outcome)
 	err := c.cc.Invoke(ctx, "/operations.Operations/Migration", in, out, opts...)
@@ -190,8 +170,6 @@ type OperationsServer interface {
 	PutInternal(context.Context, *KeyValue) (*Ack, error)
 	AppendInternal(context.Context, *KeyValue) (*Ack, error)
 	DelInternal(context.Context, *Key) (*Ack, error)
-	Replicate(context.Context, *KeyValueVersion) (*Ack, error)
-	DeleteFromReplicas(context.Context, *Key) (*Ack, error)
 	Migration(context.Context, *KeyCost) (*Outcome, error)
 	Ping(context.Context, *PingMessage) (*Ack, error)
 	Join(context.Context, *JoinMessage) (*Ack, error)
@@ -227,12 +205,6 @@ func (UnimplementedOperationsServer) AppendInternal(context.Context, *KeyValue) 
 }
 func (UnimplementedOperationsServer) DelInternal(context.Context, *Key) (*Ack, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DelInternal not implemented")
-}
-func (UnimplementedOperationsServer) Replicate(context.Context, *KeyValueVersion) (*Ack, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Replicate not implemented")
-}
-func (UnimplementedOperationsServer) DeleteFromReplicas(context.Context, *Key) (*Ack, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteFromReplicas not implemented")
 }
 func (UnimplementedOperationsServer) Migration(context.Context, *KeyCost) (*Outcome, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Migration not implemented")
@@ -406,42 +378,6 @@ func _Operations_DelInternal_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Operations_Replicate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(KeyValueVersion)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(OperationsServer).Replicate(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/operations.Operations/Replicate",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OperationsServer).Replicate(ctx, req.(*KeyValueVersion))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _Operations_DeleteFromReplicas_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Key)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(OperationsServer).DeleteFromReplicas(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/operations.Operations/DeleteFromReplicas",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OperationsServer).DeleteFromReplicas(ctx, req.(*Key))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Operations_Migration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(KeyCost)
 	if err := dec(in); err != nil {
@@ -570,14 +506,6 @@ var Operations_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DelInternal",
 			Handler:    _Operations_DelInternal_Handler,
-		},
-		{
-			MethodName: "Replicate",
-			Handler:    _Operations_Replicate_Handler,
-		},
-		{
-			MethodName: "DeleteFromReplicas",
-			Handler:    _Operations_DeleteFromReplicas_Handler,
 		},
 		{
 			MethodName: "Migration",

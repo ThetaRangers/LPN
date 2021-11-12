@@ -13,8 +13,6 @@ service Operations {
   rpc PutInternal (KeyValue) returns (Ack) {}
   rpc AppendInternal (KeyValue) returns (Ack) {}
   rpc DelInternal (Key) returns (Ack) {}
-  rpc Replicate (KeyValueVersion) returns (Ack) {}
-  rpc DeleteFromReplicas (Key) returns (Ack) {}
   rpc Migration (KeyCost) returns (Outcome) {}
   rpc Ping(PingMessage) returns (Ack) {}
   rpc Join(JoinMessage) returns (Ack) {}

@@ -101,12 +101,12 @@ func main() {
 	}
 	log.Printf("Get(\"abc\"): %s", r2.GetValue())
 
-	/*
-		r1, err = c2.Del(ctx, &pb.Key{Key: []byte("abc")})
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Del(\"abc\"): %s", r1.GetMsg())*/
+	r1, err = c1.Del(ctx, &pb.Key{Key: []byte("abc")})
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Del(\"abc\"): %s", r1.GetMsg())
+
 	r2, err = c2.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {
 		log.Fatal(err)
