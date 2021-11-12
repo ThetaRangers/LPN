@@ -4,6 +4,7 @@ import (
 	pb "SDCC/registerServer"
 	"SDCC/utils"
 	"context"
+	"fmt"
 	"google.golang.org/grpc"
 	"log"
 	"net"
@@ -25,12 +26,26 @@ type serverRegister struct {
 	pb.UnimplementedOperationsServer
 }
 
-func getClusterNodes(id int) ([]string, []string) {
+func getClusterNodes(id int, ip string) ([]string, []string) {
 	tmpIp := make([]string, 0)
 	tmpNodeId := make([]string, 0)
 
 	for _, k := range list {
-		if k.Cluster == id {
+		if k.Cluster == id && k.Ip != ip {
+			tmpIp = append(tmpIp, k.Ip)
+			tmpNodeId = append(tmpNodeId, k.NodeId)
+		}
+	}
+
+	return tmpIp, tmpNodeId
+}
+
+func getExistingCluster() ([]string, []string) {
+	tmpIp := make([]string, 0)
+	tmpNodeId := make([]string, 0)
+
+	for _, k := range list {
+		if k.Cluster == maxCluster {
 			tmpIp = append(tmpIp, k.Ip)
 			tmpNodeId = append(tmpNodeId, k.NodeId)
 		}
@@ -68,18 +83,19 @@ func createCluster() ([]string, []string, int) {
 	tmpIp := make([]string, 0)
 	tmpNodeId := make([]string, 0)
 
-	newId := maxCluster + 1
+	maxCluster = maxCluster + 1
 
-	for _, v := range list {
+	for index, v := range list {
 		if v.Cluster == -1 || v.Attached {
 			tmpIp = append(tmpIp, v.Ip)
 			tmpNodeId = append(tmpNodeId, v.NodeId)
 
-			v.Cluster = newId
+			list[index].Cluster = maxCluster
 		}
 	}
 
-	return tmpIp, tmpNodeId, newId
+	fmt.Println(tmpIp)
+	return tmpIp, tmpNodeId, maxCluster
 }
 
 func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (*pb.Cluster, error) {
@@ -93,7 +109,7 @@ func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (
 		// If it is present in the network
 		// Update NodeID
 		list[i].NodeId = nodeId
-		addresses, ids := getClusterNodes(list[i].Cluster)
+		addresses, ids := getClusterNodes(list[i].Cluster, ip)
 
 		lock.Unlock()
 		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: true}, nil
@@ -116,7 +132,7 @@ func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (
 	} else {
 		// Attach
 		list = append(list, RegisterStruct{Ip: ip, NodeId: nodeId, Cluster: maxCluster, Attached: true})
-		addresses, ids := getClusterNodes(list[i].Cluster)
+		addresses, ids := getExistingCluster()
 
 		lock.Unlock()
 		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: false}, nil
