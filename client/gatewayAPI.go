@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	op "SDCC/operations"
@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/opentracing/opentracing-go/log"
 	"google.golang.org/grpc"
 	"io"
@@ -58,37 +57,38 @@ func GetAllNodes() []string {
 	return ipList.IpList
 }
 
-func GetAllNodesLocal(address string) []string {
+func GetAllNodesLocal(address string) ([]string, error) {
 	addr := address + ":50052"
-	conn, err := grpc.DialContext(context.Background(), addr, grpc.WithInsecure(), grpc.WithBlock())
-	if err != nil {
-		log.Error(err)
-	}
-
-	c := pb.NewOperationsClient(conn)
-
-	res, err := c.GetAllNodes(context.Background(), &pb.EmptyMessage{})
-	if err != nil {
-		log.Error(err)
-	}
-
-	return res.GetAddresses()
-}
-
-func contactServer(ip string) (op.OperationsClient, error) {
-	addr := ip + ":50051"
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
 	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		return nil, err
 	}
 
+	c := pb.NewOperationsClient(conn)
+
+	res, err := c.GetAllNodes(context.Background(), &pb.EmptyMessage{})
+	if err != nil {
+		return nil, err
+	}
+
+	return res.GetAddresses(), nil
+}
+
+func contactServer(ip string) (op.OperationsClient, *grpc.ClientConn, error) {
+	addr := ip + ":50051"
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock())
+	if err != nil {
+		return nil, nil, err
+	}
+
 	c := op.NewOperationsClient(conn)
-	return c, nil
+	return c, conn, nil
 }
 
 func Ping(ip string) (time.Duration, error) {
-	c, err := contactServer(ip)
+	c, _, err := contactServer(ip)
 	if err != nil {
 		return -1, err
 	}
@@ -127,13 +127,13 @@ func GetClosestNode(nodes []string) (string, error) {
 	return minNode, nil
 }
 
-func Connect(ip string) (*Connection, error) {
-	c, err := contactServer(ip)
+func Connect(ip string) (*Connection, *grpc.ClientConn, error) {
+	c, conn, err := contactServer(ip)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &Connection{c: c}, nil
+	return &Connection{c: c}, conn, nil
 }
 
 func (conn Connection) Get(k []byte) ([][]byte, error) {
@@ -172,6 +172,7 @@ func (conn Connection) Del(k []byte) error {
 	return nil
 }
 
+/*
 func main() {
 
 	allNodes := GetAllNodesLocal("192.168.1.146")
@@ -210,4 +211,4 @@ func main() {
 	}
 
 	fmt.Println(val)
-}
+}*/

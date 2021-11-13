@@ -3,50 +3,50 @@ services:
   app1:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
   app2:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
   app3:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
   app4:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
   app5:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
   app6:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
   app7:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
   app8:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
   app9:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
   app10:
     image: app
     network_mode: bridge
-    environment:
-      - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    #environment:
+    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
