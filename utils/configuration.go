@@ -12,8 +12,6 @@ const (
 	AwsRegion              = "us-east-1"
 	Replicas               = 4
 	N                      = Replicas + 1
-	WriteQuorum            = N/2 + 1
-	ReadQuorum             = N / 2
 	Timeout                = 5 * time.Second
 	MigrationWindowMinutes = 10
 	CostRead               = 1

@@ -9,7 +9,7 @@ import (
 
 func main() {
 
-	allNodes, _ := client.GetAllNodesLocal("192.168.1.146")
+	allNodes, _ := client.GetAllNodesLocal("192.168.1.52")
 
 	closest, _ := client.GetClosestNode(allNodes)
 

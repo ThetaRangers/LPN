@@ -68,7 +68,7 @@ func RegisterToTheNetwork(ip string, ipStr string, n int, region string) Replica
 }
 
 func RegisterStub(ip string, ipStr string, n int, region string) ReplicaSet {
-	addr := "192.168.1.146" + ":50052"
+	addr := "192.168.1.56" + ":50052"
 
 	conn, err := grpc.DialContext(context.Background(), addr, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {

@@ -3,20 +3,18 @@ package main
 import (
 	"SDCC/cloud"
 	db "SDCC/database"
-	"SDCC/ipfs"
+	"SDCC/dht"
 	"SDCC/migration"
 	pb "SDCC/operations"
 	"SDCC/replication"
 	"SDCC/utils"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/dgraph-io/badger"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/routing"
-	"github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/multiformats/go-multiaddr"
 	"google.golang.org/grpc"
 	"log"
@@ -54,6 +52,7 @@ var address string
 var channel chan migration.KeyOp
 var raftN *replication.RaftStruct
 
+var kdht *dht.KDht
 var config = Config{}
 var bootstrapNodes []string
 var h host.Host
@@ -73,27 +72,6 @@ func (al *addrList) Set(value string) error {
 	}
 	*al = append(*al, addr)
 	return nil
-}
-
-type NullValidator struct{}
-
-// Validate always returns success
-func (nv NullValidator) Validate(string, []byte) error {
-	//log.Printf("NullValidator Validate: %s - %s", key, string(value))
-	return nil
-}
-
-// Select always selects the first record
-func (nv NullValidator) Select(string, [][]byte) (int, error) {
-	/*
-		strs := make([]string, len(values))
-		for i := 0; i < len(values); i++ {
-			strs[i] = string(values[i])
-		}
-		log.Printf("NullValidator Select: %s - %v", key, strs)
-	*/
-
-	return 0, nil
 }
 
 func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
@@ -116,7 +94,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	log.Printf("Received: Get(%v)", in.GetKey())
 	key := string(in.GetKey())
 
-	value, err := kdht.GetValue(ctx, key)
+	value, _, err := kdht.GetValue(ctx, key)
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			//Not found in the dht
@@ -126,14 +104,11 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		}
 	}
 
-	var target string
-	json.Unmarshal(value, &target)
-
-	if !cluster.Contains(target) {
+	if !cluster.Contains(value) {
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.External}
 
 		// Try node list
-		c, _, err := ContactServer(target)
+		c, _, err := ContactServer(value)
 		i := 1
 		for err != nil {
 			//if i > list.size() break;
@@ -161,15 +136,6 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 
 // GetInternal internal function called by other nodes to retrieve an information
 func (s *server) GetInternal(ctx context.Context, in *pb.Key) (*pb.Value, error) {
-	key := string(in.GetKey())
-	value, err := kdht.GetValue(ctx, key)
-	if err != nil {
-		return &pb.Value{Value: [][]byte{}}, err
-	}
-
-	var target string
-	json.Unmarshal(value, &target)
-
 	val, _ := database.Get(in.GetKey())
 	return &pb.Value{Value: val}, nil
 }
@@ -183,7 +149,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	key := string(in.GetKey())
 
 	//Check where is stored
-	value, err := kdht.GetValue(ctxDht, key)
+	value, _, err := kdht.GetValue(ctxDht, key)
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			log.Println("Not found responsible node, putting in local db....")
@@ -203,8 +169,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 				return &pb.Ack{Msg: "Err"}, err
 			}
 
-			dhtInput, _ := json.Marshal(address)
-			err := kdht.PutValue(ctxDht, string(in.GetKey()), dhtInput)
+			err := kdht.PutValue(ctxDht, string(in.GetKey()), address, false)
 			if err != nil {
 				return &pb.Ack{Msg: "Err"}, err
 			}
@@ -216,21 +181,18 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	}
 
 	//Found in the dht
-	var target string
-	json.Unmarshal(value, &target)
-
 	// If not in Raft cluster
-	if !cluster.Contains(target) {
+	if !cluster.Contains(value) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
-		c, _, err := ContactServer(target)
+		c, _, err := ContactServer(value)
 		i := 1
 		for err != nil {
 			// TODO get cluster from dht
 			//c, _, err = ContactServer(target[i])
 			if err != nil {
 				i++
-				if i > len(target) {
+				if i > len(value) {
 					// TODO errore
 					return &pb.Ack{Msg: "Err"}, errors.New("no replica available")
 				} else {
@@ -288,7 +250,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	key := string(in.GetKey())
 
 	//Check where is stored
-	value, err := kdht.GetValue(ctx, key)
+	value, _, err := kdht.GetValue(ctx, key)
 
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
@@ -308,7 +270,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			}
 
 			//Set
-			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
+			err := kdht.PutValue(ctx, string(in.GetKey()), ip.String(), false)
 			if err != nil {
 				return nil, err
 			}
@@ -319,15 +281,12 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		return nil, err
 	}
 
-	var target string
-	json.Unmarshal(value, &target)
-
 	//Found in the dht
-	if !cluster.Contains(target) {
+	if !cluster.Contains(value) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
 
-		c, _, _ := ContactServer(target)
+		c, _, _ := ContactServer(value)
 		i := 1
 		for err != nil {
 			// TODO get cluster from dht
@@ -380,7 +339,7 @@ func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, 
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	key := string(in.GetKey())
 	// Get responsible from dht
-	value, err := kdht.GetValue(ctx, key)
+	value, _, err := kdht.GetValue(ctx, key)
 	if err == routing.ErrNotFound || len(value) == 0 {
 		// Not found in the dht or already deleted
 		return &pb.Ack{Msg: "Ok"}, nil
@@ -388,11 +347,8 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		return &pb.Ack{Msg: "Err"}, err
 	}
 
-	var target string
-	json.Unmarshal(value, &target)
-
-	if !cluster.Contains(target) {
-		c, _, _ := ContactServer(target)
+	if !cluster.Contains(value) {
+		c, _, _ := ContactServer(value)
 		i := 1
 		for err != nil {
 			// TODO retry on replicaset
@@ -422,7 +378,7 @@ func (s *server) DelInternal(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		return &pb.Ack{Msg: "Err"}, err
 	}
 
-	err = kdht.PutValue(ctx, string(in.GetKey()), []byte(""))
+	err = kdht.PutValue(ctx, string(in.GetKey()), "", false)
 	if err != nil {
 		return &pb.Ack{Msg: "Err"}, err
 	}
@@ -494,8 +450,7 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 			log.Fatal(err)
 		}
 
-		kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
-		kdht.Validator = NullValidator{}
+		kdht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -559,23 +514,18 @@ func init() {
 	database = utils.GetConfiguration().Database
 }
 
-var kdht *dht.IpfsDHT
-
 func migrationThread(ctx context.Context) {
 	for {
 		migrationKeys := migration.EvaluateMigration()
 
 		for _, k := range migrationKeys {
-			value, err := kdht.GetValue(ctx, k)
+			value, _, err := kdht.GetValue(ctx, k)
 			if err != nil {
 				continue
 			}
 
-			var target string
-			json.Unmarshal(value, &target)
-
 			// Try to contact server
-			c, _, err := ContactServer(target)
+			c, _, err := ContactServer(value)
 			if err != nil {
 				continue
 			}
@@ -594,8 +544,8 @@ func migrationThread(ctx context.Context) {
 			}
 
 			// Modify dht
-			dhtInput, _ := json.Marshal(cluster)
-			err = kdht.PutValue(ctx, k, dhtInput)
+			/*dhtInput, _ := json.Marshal(cluster)
+			err = kdht.PutCluster*/
 		}
 
 		time.Sleep(10 * time.Second)
@@ -608,7 +558,7 @@ func initializeHost(ctx context.Context) string {
 
 	flag.Int64Var(&config.Seed, "seed", 0, "Seed value for generating a PeerID, 0 is random")
 
-	h, err = ipfs.NewHost(ctx, config.Seed, config.Port)
+	h, err = dht.NewHost(ctx, config.Seed, config.Port)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -729,8 +679,7 @@ func main() {
 			}
 		}
 
-		kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
-		kdht.Validator = NullValidator{}
+		kdht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
 		if err != nil {
 			log.Fatal(err)
 		}
