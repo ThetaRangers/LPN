@@ -106,6 +106,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("Del(\"abc\"): %s", r1.GetMsg())
+	time.Sleep(3 * time.Second)
 
 	r2, err = c2.Get(ctx, &pb.Key{Key: []byte("abc")})
 	if err != nil {

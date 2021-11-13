@@ -99,6 +99,26 @@ func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	return c, conn, nil
 }
 
+func getAliveReplica(ctx context.Context, ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
+	c, conn, err := ContactServer(ip)
+	if err != nil {
+		replicas, err2 := kdht.GetCluster(ctx, ip)
+		if err2 != nil {
+			return nil, nil, err2
+		}
+		// ip is part of replicas, iterating this way may cause retrying to connect to it
+		for _, replica := range replicas {
+			c, conn, err = ContactServer(replica)
+			if err == nil {
+				return c, conn, nil
+			}
+		}
+		return nil, nil, errors.New("no alive replica found")
+	} else {
+		return c, conn, nil
+	}
+}
+
 // Get rpc function called to retrieve a value, if the value is not found in the local DB, the responsible node is
 // searched on the DHT and queried. If no node can be found an empty value is returned with no error. If an error
 // occurred an empty value is returned with the error. If the value is correctly found, it is returned with no error
@@ -108,30 +128,20 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	key := string(in.GetKey())
 
 	value, _, err := kdht.GetValue(ctx, key)
-	if err != nil {
-		if err == routing.ErrNotFound || len(value) == 0 {
-			//Not found in the dht
-			return &pb.Value{Value: [][]byte{}}, nil
-		} else {
-			return &pb.Value{Value: [][]byte{}}, err
-		}
+	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
+		//Not found in the dht or deleted
+		return &pb.Value{Value: [][]byte{}}, nil
+	} else if err != nil {
+		return &pb.Value{Value: [][]byte{}}, err
 	}
 
 	if !cluster.Contains(value) {
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.External}
 
 		// Try node list
-		c, _, err := ContactServer(value)
-		i := 1
-		for err != nil {
-			//if i > list.size() break;
-			// TODO skip to next one in the list
-			//c, _, err = ContactServer(target[i])
-			// TODO get cluster from dht
-			if err != nil {
-				i++
-				continue
-			}
+		c, _, err := getAliveReplica(ctx, value)
+		if err != nil {
+			return &pb.Value{Value: [][]byte{}}, err
 		}
 
 		result, err := c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
@@ -163,34 +173,32 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 
 	//Check where is stored
 	value, _, err := kdht.GetValue(ctxDht, key)
-	if err != nil {
-		if err == routing.ErrNotFound || len(value) == 0 {
-			log.Println("Not found responsible node, putting in local db....")
-			channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
-			// Not found in the dht
+	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
+		log.Println("Not found responsible node, putting in local db....")
+		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
+		// Not found in the dht or deleted
 
-			leader := raftN.GetLeader()
-			if leader == ip.String() {
-				err = raftN.Put(in.GetKey(), in.GetValue())
-			} else {
-				c, _, _ := ContactServer(leader)
-
-				_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
-			}
-
-			if err != nil {
-				return &pb.Ack{Msg: "Err"}, err
-			}
-
-			err := kdht.PutValue(ctxDht, string(in.GetKey()), address, false)
-			if err != nil {
-				return &pb.Ack{Msg: "Err"}, err
-			}
-
-			return &pb.Ack{Msg: "Ok"}, nil
+		leader := raftN.GetLeader()
+		if leader == ip.String() {
+			err = raftN.Put(in.GetKey(), in.GetValue())
 		} else {
+			c, _, _ := ContactServer(leader)
+
+			_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		}
+
+		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
 		}
+
+		err := kdht.PutValue(ctxDht, string(in.GetKey()), address, false)
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
+		}
+
+		return &pb.Ack{Msg: "Ok"}, nil
+	} else if err != nil {
+		return &pb.Ack{Msg: "Err"}, err
 	}
 
 	//Found in the dht
@@ -198,20 +206,9 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	if !cluster.Contains(value) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
-		c, _, err := ContactServer(value)
-		i := 1
-		for err != nil {
-			// TODO get cluster from dht
-			//c, _, err = ContactServer(target[i])
-			if err != nil {
-				i++
-				if i > len(value) {
-					// TODO errore
-					return &pb.Ack{Msg: "Err"}, errors.New("no replica available")
-				} else {
-					continue
-				}
-			}
+		c, _, err := getAliveReplica(ctx, value)
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
 		}
 
 		_, err = c.PutInternal(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
@@ -265,32 +262,30 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	//Check where is stored
 	value, _, err := kdht.GetValue(ctx, key)
 
-	if err != nil {
-		if err == routing.ErrNotFound || len(value) == 0 {
-			//Not found in the dht
-			channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
+	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
+		//Not found in the dht or deleted
+		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 
-			leader := raftN.GetLeader()
-			if leader == ip.String() {
-				err = raftN.Put(in.GetKey(), in.GetValue())
-			} else {
-				c, _, _ := ContactServer(leader)
+		leader := raftN.GetLeader()
+		if leader == ip.String() {
+			err = raftN.Put(in.GetKey(), in.GetValue())
+		} else {
+			c, _, _ := ContactServer(leader)
 
-				_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
-			}
-			if err != nil {
-				return &pb.Ack{Msg: "Err"}, err
-			}
-
-			//Set
-			err := kdht.PutValue(ctx, string(in.GetKey()), ip.String(), false)
-			if err != nil {
-				return nil, err
-			}
-
-			return &pb.Ack{Msg: "Ok"}, nil
+			_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		}
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
 		}
 
+		//Set
+		err := kdht.PutValue(ctx, string(in.GetKey()), ip.String(), false)
+		if err != nil {
+			return nil, err
+		}
+
+		return &pb.Ack{Msg: "Ok"}, nil
+	} else if err != nil {
 		return nil, err
 	}
 
@@ -299,18 +294,12 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
 
-		c, _, _ := ContactServer(value)
-		i := 1
-		for err != nil {
-			// TODO get cluster from dht
-			//c, _, err = ContactServer(target[i])
-			if err != nil {
-				i++
-				continue
-			}
+		c, _, err := getAliveReplica(ctx, value)
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
 		}
 
-		_, err := c.AppendInternal(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		_, err = c.AppendInternal(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
 		if err != nil {
 			return &pb.Ack{Msg: "Connection error"}, nil
 		}
@@ -353,7 +342,7 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	key := string(in.GetKey())
 	// Get responsible from dht
 	value, _, err := kdht.GetValue(ctx, key)
-	if err == routing.ErrNotFound || len(value) == 0 {
+	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		// Not found in the dht or already deleted
 		return &pb.Ack{Msg: "Ok"}, nil
 	} else if err != nil {
@@ -361,18 +350,12 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	}
 
 	if !cluster.Contains(value) {
-		c, _, _ := ContactServer(value)
-		i := 1
-		for err != nil {
-			// TODO retry on replicaset
-			//c, _, err = ContactServer(target[i])
-			if err != nil {
-				i++
-				continue
-			}
+		c, _, err := getAliveReplica(ctx, value)
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
 		}
 
-		return c.DelInternal(ctx, &pb.Key{Key: in.GetKey()})
+		return c.DelInternal(ctx, in)
 	} else {
 		return s.DelInternal(ctx, in)
 	}
@@ -557,8 +540,10 @@ func migrationThread(ctx context.Context) {
 			}
 
 			// Modify dht
-			/*dhtInput, _ := json.Marshal(cluster)
-			err = kdht.PutCluster*/
+			err = kdht.PutValue(ctx, k, ip.String(), false)
+			if err != nil {
+				// TODO ???
+			}
 		}
 
 		time.Sleep(10 * time.Second)

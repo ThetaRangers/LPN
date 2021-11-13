@@ -31,3 +31,13 @@ func (s ClusterSet) Remove(key string) bool {
 func (s ClusterSet) Len() int {
 	return len(s.cluster)
 }
+
+func (s ClusterSet) GetAll() []string {
+	clusterSlice := make([]string, s.Len())
+	i := 0
+	for k := range s.cluster {
+		clusterSlice[i] = k
+		i++
+	}
+	return clusterSlice
+}

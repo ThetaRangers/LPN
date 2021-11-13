@@ -5,6 +5,7 @@ const (
 	LeaveOp    = 1
 	ContainsOp = 2
 	LenOp      = 3
+	GetAllOp   = 4
 )
 
 type localOperation struct {
@@ -31,6 +32,8 @@ func (c ClusterRoutine) run() {
 			op.ch <- c.cluster.Contains(op.ip)
 		case LenOp:
 			op.ch <- c.cluster.Len()
+		case GetAllOp:
+			op.ch <- c.cluster.GetAll()
 		}
 	}
 }
@@ -55,6 +58,13 @@ func (c ClusterRoutine) Len() int {
 	c.ch <- localOperation{operation: LenOp, ch: channel}
 	tmp := <-channel
 	return tmp.(int)
+}
+
+func (c ClusterRoutine) GetAll() []string {
+	channel := make(chan interface{})
+	c.ch <- localOperation{operation: GetAllOp, ch: channel}
+	tmp := <-channel
+	return tmp.([]string)
 }
 
 func NewClusterRoutine() ClusterRoutine {

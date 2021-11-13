@@ -1,7 +1,9 @@
 package dht
 
 import (
+	"SDCC/utils"
 	"context"
+	"encoding/json"
 	"log"
 	"sync"
 
@@ -64,6 +66,31 @@ func (k *KDht) PutValue(ctx context.Context, key string, value string, offloaded
 		dhtValue[0] = localChar[0]
 	}
 	dhtValue = append(dhtValue, []byte(value)...)
+	return k.kDht.PutValue(ctx, dhtKey, dhtValue)
+}
+
+func (k *KDht) GetCluster(ctx context.Context, key string) ([]string, error) {
+	dhtKey := clusterChar + key
+	value, err := k.kDht.GetValue(ctx, dhtKey)
+	if err != nil {
+		return nil, err
+	} else {
+		var target []string
+		err := json.Unmarshal(value, &target)
+		if err != nil {
+			return nil, err
+		}
+		return target, nil
+	}
+}
+
+func (k *KDht) PutCluster(ctx context.Context, key string, value utils.ClusterRoutine) error {
+	dhtKey := clusterChar + key
+	cluster := value.GetAll()
+	dhtValue, err := json.Marshal(cluster)
+	if err != nil {
+		return err
+	}
 	return k.kDht.PutValue(ctx, dhtKey, dhtValue)
 }
 
