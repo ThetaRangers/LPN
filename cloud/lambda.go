@@ -121,10 +121,10 @@ func RegisterStub2(ip, network string, n int, region string) ReplicaSet {
 func main() {
 	var ip string
 	var ipStr string
-	for i := 7; i < 10; i++ {
+	for i := 4; i < 7; i++ {
 		ip = fmt.Sprintf("ip%d", i)
 		ipStr = fmt.Sprintf("ip%dstr", i)
-		ret := RegisterToTheNetwork(ip, ipStr, 2, "us-east-1")
+		ret := RegisterToTheNetwork(ip, ipStr, 3, "us-east-1")
 		fmt.Printf("ip %s ipStr %s\n", ip, ipStr)
 		fmt.Printf("crashed %d valid %d list\n", ret.Crashed, ret.Valid)
 		for j := 0; j < len(ret.IpList); j++ {

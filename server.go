@@ -30,6 +30,19 @@ const (
 	regService = 1
 )
 
+var retryPolicy = `{
+		"methodConfig": [{
+		  "name": [{"service": "operations.Operations"}],
+		  "waitForReady": true,
+		  "retryPolicy": {
+			  "MaxAttempts": 4,
+			  "InitialBackoff": ".01s",
+			  "MaxBackoff": ".01s",
+			  "BackoffMultiplier": 1.0,
+			  "RetryableStatusCodes": [ "UNAVAILABLE" ]
+		  }
+		}]}`
+
 type Config struct {
 	Port           int
 	Seed           int64
@@ -77,7 +90,7 @@ func (al *addrList) Set(value string) error {
 func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	addr := ip + ":50051"
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithDefaultServiceConfig(retryPolicy))
 	if err != nil {
 		return nil, nil, err
 	}

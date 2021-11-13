@@ -17,7 +17,7 @@ const (
 
 func ping(address string) time.Duration {
 
-	conn, _ := grpc.Dial(address+":50051", grpc.WithInsecure(), grpc.WithBlock())
+	conn, _ := grpc.Dial(address+":50051", grpc.WithInsecure(), grpc.WithDefaultServiceConfig(RetryPolicy))
 	c := pb.NewOperationsClient(conn)
 	defer conn.Close()
 
@@ -32,13 +32,13 @@ func main() {
 	// Set up a connection to the server.
 	fmt.Println("Ping: ", ping("172.17.0.2"))
 
-	conn1, err := grpc.Dial(serverAddress1, grpc.WithInsecure(), grpc.WithBlock())
+	conn1, err := grpc.Dial(serverAddress1, grpc.WithInsecure(), grpc.WithDefaultServiceConfig(RetryPolicy))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
 	defer conn1.Close()
 
-	conn2, err := grpc.Dial(serverAddress2, grpc.WithInsecure(), grpc.WithBlock())
+	conn2, err := grpc.Dial(serverAddress2, grpc.WithInsecure(), grpc.WithDefaultServiceConfig(RetryPolicy))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
