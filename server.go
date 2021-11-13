@@ -720,7 +720,6 @@ func main() {
 
 	// Ready to start dht
 	if len(registerCluster.IpList) > 0 {
-		log.Println("HEREAAAAAAAAAAAAAAAAAAAAA")
 		for j := 0; j < len(registerCluster.IpList); j++ {
 			r := registerCluster.IpList[j]
 			replicaSet = append(replicaSet, r.Ip)
@@ -762,6 +761,11 @@ func main() {
 		for _, node := range ipList {
 			var err error
 			var c pb.OperationsClient
+
+			leader := raftN.GetLeader()
+			if leader != ip.String() {
+				time.Sleep(3 * time.Second)
+			}
 
 			log.Printf("Asking %s to join", node.Ip)
 
