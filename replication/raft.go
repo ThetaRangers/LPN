@@ -79,6 +79,34 @@ func (r RaftStruct) Append(key []byte, value [][]byte) error {
 	return nil
 }
 
+func (r RaftStruct) Join(ip string) error {
+	payload := CommandPayload{
+		Operation: "JOIN",
+		Key: []byte(ip),
+	}
+
+	err := r.apply(payload)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r RaftStruct) Leave(ip string) error {
+	payload := CommandPayload{
+		Operation: "LEAVE",
+		Key: []byte(ip),
+	}
+
+	err := r.apply(payload)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r RaftStruct) apply(payload CommandPayload) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -121,13 +149,6 @@ func (r RaftStruct) AddNodes(addresses []string) error {
 }
 
 func (r RaftStruct) RemoveNode(ip string) error {
-	// TODO is it correct?
-	// Maybe needed to reset cluster for master when other nodes are leaving
-	err := os.Remove("raft-data/stablestore")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	f := r.RaftNode.RemoveServer(raft.ServerID(ip), 0, 0)
 	if f.Error() != nil {
 		return f.Error()
@@ -146,7 +167,12 @@ func ReInitializeRaft(ip string, db database.Database, cluster utils.ClusterRout
 }
 
 func InitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutine) *RaftStruct {
-	err := os.Mkdir("raft-data", 0755)
+	err := os.RemoveAll("raft-data")
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.Mkdir("raft-data", 0755)
 	if err != nil {
 		log.Println(err)
 	}

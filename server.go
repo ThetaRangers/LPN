@@ -12,7 +12,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/dgraph-io/badger"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/multiformats/go-multiaddr"
@@ -439,11 +438,14 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 
 		raftN = replication.ReInitializeRaft(ip.String(), database, cluster)
 	} else {
-		bootstrap := in.GetBootstrap()
-		log.Println("Joining DHT with bootstrap", bootstrap)
-		err := config.BootstrapPeers.Set(bootstrap)
-		if err != nil {
-			log.Fatal(err)
+		var err error
+		bootstrapNodes := in.GetBootstrap()
+		for _, b := range bootstrapNodes {
+			err := config.BootstrapPeers.Set(b)
+			if err != nil {
+				log.Println(err)
+			}
+
 		}
 
 		kdht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
@@ -459,9 +461,13 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 func (s *server) LeaveCluster(ctx context.Context, in *pb.RequestJoinMessage) (*pb.Ack, error) {
 	address := in.GetIp()
 
-	err := raftN.RemoveNode(address)
+	err := raftN.Leave(address)
 	if err != nil {
-		log.Println("ERROR IN LEAVING", err)
+		return nil, err
+	}
+
+	err = raftN.RemoveNode(address)
+	if err != nil {
 		return nil, err
 	}
 
@@ -475,7 +481,12 @@ func (s *server) RequestJoin(ctx context.Context, in *pb.RequestJoinMessage) (*p
 	// If this node is the master
 	leader := raftN.GetLeader()
 	if raftN.GetLeader() == ip.String() {
-		err := raftN.AddNode(address)
+		err := raftN.Join(address)
+		if err != nil {
+			return nil, err
+		}
+
+		err = raftN.AddNode(address)
 		if err != nil {
 			return nil, err
 		}
@@ -649,31 +660,18 @@ func main() {
 		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.N, utils.AwsRegion)
 	} else if regService == 1 {
 		registerCluster = cloud.RegisterStub(ip.String(), ipStr, utils.N, utils.AwsRegion)
-	} /*else {
-		registerCluster = cloud.RegisterStub2(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
-
-		isCrashed := os.Getenv("CRASHED")
-		if isCrashed == "y" {
-			log.Println("NODE HAS CRASHED")
-			crashed = 1
-		} else {
-			crashed = 2
-		}
-
-		for j := 0; j < len(registerCluster.IpList); j++ {
-			r := registerCluster.IpList[j]
-			replicaSet = append(replicaSet, r.Ip)
-		}
-	}*/
+	}
 
 	// Ready to start dht
 	if len(registerCluster.IpList) > 0 {
 		for j := 0; j < len(registerCluster.IpList); j++ {
 			r := registerCluster.IpList[j]
-			replicaSet = append(replicaSet, r.Ip)
-			err := config.BootstrapPeers.Set(r.IpString)
-			if err != nil {
-				panic(err)
+			if r.IpString != ipStr {
+				replicaSet = append(replicaSet, r.Ip)
+				err := config.BootstrapPeers.Set(r.IpString)
+				if err != nil {
+					panic(err)
+				}
 			}
 		}
 
@@ -695,24 +693,20 @@ func main() {
 		}
 
 	} else if len(ipList) == (utils.N - 1) {
-		log.Println("INITIATING CLUSTER")
 		// If master to a cluster
-		cluster.Join(ip.String())
-		for _, addr := range replicaSet {
-			cluster.Join(addr)
-		}
-
 		log.Println("Replicas found: ", replicaSet)
 		log.Println("Cluster: ", cluster)
+
+		var clusterBootstrap []string
+		var clusterAddresses []string
+		for _, node := range ipList {
+			clusterBootstrap = append(clusterBootstrap, node.IpString)
+			clusterAddresses = append(clusterAddresses, node.Ip)
+		}
 
 		for _, node := range ipList {
 			var err error
 			var c pb.OperationsClient
-
-			leader := raftN.GetLeader()
-			if leader != ip.String() {
-				time.Sleep(3 * time.Second)
-			}
 
 			log.Printf("Asking %s to join", node.Ip)
 
@@ -721,7 +715,7 @@ func main() {
 				log.Println("Failed to contact, trying again...")
 			}
 
-			_, err = c.Join(context.Background(), &pb.JoinMessage{Bootstrap: ipStr})
+			_, err = c.Join(context.Background(), &pb.JoinMessage{Bootstrap: clusterBootstrap, Cluster: clusterAddresses})
 			if err != nil {
 				log.Fatal("ERROR in requesting join", err)
 			}
@@ -730,10 +724,14 @@ func main() {
 
 			err = raftN.AddNode(node.Ip)
 			if err != nil {
-				log.Fatal(err)
+				log.Fatal("ADDING NODE", err)
 			}
 			log.Printf("Done adding %s to raft", node.Ip)
 
+		}
+		raftN.Join(ip.String())
+		for _, addr := range replicaSet {
+			raftN.Join(addr)
 		}
 
 	} else if len(replicaSet) >= utils.N {
@@ -752,10 +750,10 @@ func main() {
 	}
 
 	go func() {
-		var dab *badger.DB
-		dab = database.(db.BadgerDB).Db
+		/*var dab *badger.DB
+		dab = database.(db.BadgerDB).Db*/
 		for {
-			log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats())
+			/*log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats())
 			log.Println("____________________Begin printing db____________________")
 			err := dab.View(func(txn *badger.Txn) error {
 				opts := badger.DefaultIteratorOptions
@@ -779,8 +777,9 @@ func main() {
 			if err != nil {
 				log.Println("There is a problem")
 			}
-
-			time.Sleep(30 * time.Second)
+*/
+			log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats()["latest_configuration"])
+			time.Sleep(15 * time.Second)
 		}
 	}()
 

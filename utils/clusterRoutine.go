@@ -68,7 +68,7 @@ func (c ClusterRoutine) GetAll() []string {
 }
 
 func NewClusterRoutine() ClusterRoutine {
-	routine := ClusterRoutine{cluster: NewClusterSet(), ch: make(chan localOperation)}
+	routine := ClusterRoutine{cluster: NewClusterSet(), ch: make(chan localOperation, 200)}
 	go routine.run()
 	return routine
 }

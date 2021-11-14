@@ -21,7 +21,8 @@ service Operations {
 }
 
 message JoinMessage {
-    string bootstrap = 1;
+    repeated string cluster = 1;
+    repeated string bootstrap = 2;
 }
 
 message RequestJoinMessage {
