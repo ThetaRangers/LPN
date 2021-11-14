@@ -9,10 +9,10 @@ import (
 	"SDCC/replication"
 	"SDCC/utils"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/dgraph-io/badger"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/multiformats/go-multiaddr"
@@ -52,7 +52,6 @@ var address string
 var channel chan migration.KeyOp
 var raftN *replication.RaftStruct
 
-var kdht *dht.KDht
 var config = Config{}
 var bootstrapNodes []string
 var h host.Host
@@ -72,6 +71,27 @@ func (al *addrList) Set(value string) error {
 	}
 	*al = append(*al, addr)
 	return nil
+}
+
+type NullValidator struct{}
+
+// Validate always returns success
+func (nv NullValidator) Validate(string, []byte) error {
+	//log.Printf("NullValidator Validate: %s - %s", key, string(value))
+	return nil
+}
+
+// Select always selects the first record
+func (nv NullValidator) Select(string, [][]byte) (int, error) {
+	/*
+		strs := make([]string, len(values))
+		for i := 0; i < len(values); i++ {
+			strs[i] = string(values[i])
+		}
+		log.Printf("NullValidator Select: %s - %v", key, strs)
+	*/
+
+	return 0, nil
 }
 
 func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
@@ -94,7 +114,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	log.Printf("Received: Get(%v)", in.GetKey())
 	key := string(in.GetKey())
 
-	value, _, err := kdht.GetValue(ctx, key)
+	value, err := kdht.GetValue(ctx, key)
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			//Not found in the dht
@@ -104,11 +124,14 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 		}
 	}
 
-	if !cluster.Contains(value) {
+	var target string
+	json.Unmarshal(value, &target)
+
+	if !cluster.Contains(target) {
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.External}
 
 		// Try node list
-		c, _, err := ContactServer(value)
+		c, _, err := ContactServer(target)
 		i := 1
 		for err != nil {
 			//if i > list.size() break;
@@ -136,6 +159,15 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 
 // GetInternal internal function called by other nodes to retrieve an information
 func (s *server) GetInternal(ctx context.Context, in *pb.Key) (*pb.Value, error) {
+	key := string(in.GetKey())
+	value, err := kdht.GetValue(ctx, key)
+	if err != nil {
+		return &pb.Value{Value: [][]byte{}}, err
+	}
+
+	var target string
+	json.Unmarshal(value, &target)
+
 	val, _ := database.Get(in.GetKey())
 	return &pb.Value{Value: val}, nil
 }
@@ -149,7 +181,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	key := string(in.GetKey())
 
 	//Check where is stored
-	value, _, err := kdht.GetValue(ctxDht, key)
+	value, err := kdht.GetValue(ctxDht, key)
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
 			log.Println("Not found responsible node, putting in local db....")
@@ -169,7 +201,8 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 				return &pb.Ack{Msg: "Err"}, err
 			}
 
-			err := kdht.PutValue(ctxDht, string(in.GetKey()), address, false)
+			dhtInput, _ := json.Marshal(address)
+			err := kdht.PutValue(ctxDht, string(in.GetKey()), dhtInput)
 			if err != nil {
 				return &pb.Ack{Msg: "Err"}, err
 			}
@@ -181,18 +214,21 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	}
 
 	//Found in the dht
+	var target string
+	json.Unmarshal(value, &target)
+
 	// If not in Raft cluster
-	if !cluster.Contains(value) {
+	if !cluster.Contains(target) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
-		c, _, err := ContactServer(value)
+		c, _, err := ContactServer(target)
 		i := 1
 		for err != nil {
 			// TODO get cluster from dht
 			//c, _, err = ContactServer(target[i])
 			if err != nil {
 				i++
-				if i > len(value) {
+				if i > len(target) {
 					// TODO errore
 					return &pb.Ack{Msg: "Err"}, errors.New("no replica available")
 				} else {
@@ -250,7 +286,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	key := string(in.GetKey())
 
 	//Check where is stored
-	value, _, err := kdht.GetValue(ctx, key)
+	value, err := kdht.GetValue(ctx, key)
 
 	if err != nil {
 		if err == routing.ErrNotFound || len(value) == 0 {
@@ -270,7 +306,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			}
 
 			//Set
-			err := kdht.PutValue(ctx, string(in.GetKey()), ip.String(), false)
+			err := kdht.PutValue(ctx, string(in.GetKey()), []byte(ip.String()))
 			if err != nil {
 				return nil, err
 			}
@@ -281,12 +317,15 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		return nil, err
 	}
 
+	var target string
+	json.Unmarshal(value, &target)
+
 	//Found in the dht
-	if !cluster.Contains(value) {
+	if !cluster.Contains(target) {
 		//Connect to remote ip
 		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
 
-		c, _, _ := ContactServer(value)
+		c, _, _ := ContactServer(target)
 		i := 1
 		for err != nil {
 			// TODO get cluster from dht
@@ -339,7 +378,7 @@ func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, 
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	key := string(in.GetKey())
 	// Get responsible from dht
-	value, _, err := kdht.GetValue(ctx, key)
+	value, err := kdht.GetValue(ctx, key)
 	if err == routing.ErrNotFound || len(value) == 0 {
 		// Not found in the dht or already deleted
 		return &pb.Ack{Msg: "Ok"}, nil
@@ -347,8 +386,11 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		return &pb.Ack{Msg: "Err"}, err
 	}
 
-	if !cluster.Contains(value) {
-		c, _, _ := ContactServer(value)
+	var target string
+	json.Unmarshal(value, &target)
+
+	if !cluster.Contains(target) {
+		c, _, _ := ContactServer(target)
 		i := 1
 		for err != nil {
 			// TODO retry on replicaset
@@ -378,7 +420,7 @@ func (s *server) DelInternal(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		return &pb.Ack{Msg: "Err"}, err
 	}
 
-	err = kdht.PutValue(ctx, string(in.GetKey()), "", false)
+	err = kdht.PutValue(ctx, string(in.GetKey()), []byte(""))
 	if err != nil {
 		return &pb.Ack{Msg: "Err"}, err
 	}
@@ -419,10 +461,8 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 	if cluster.Len() != 0 {
 		// If node is part of a cluster and needs to transfer
 		// TODO transfer cluster
-
 		log.Println("Leaving old cluster: ", cluster)
 		leader := raftN.GetLeader()
-		log.Println("Leader is ", leader)
 		c, _, err := ContactServer(leader)
 		if err != nil {
 			log.Println("ERROR", err)
@@ -443,14 +483,23 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 
 		raftN = replication.ReInitializeRaft(ip.String(), database, cluster)
 	} else {
-		bootstrap := in.GetBootstrap()
-		log.Println("Joining DHT with bootstrap", bootstrap)
-		err := config.BootstrapPeers.Set(bootstrap)
-		if err != nil {
-			log.Fatal(err)
+		/*
+		receivedCluster := in.GetCluster()
+		for _, n := range receivedCluster {
+			cluster.Join(n)
+		}
+		*/
+		bootstrapNodes := in.GetBootstrap()
+		for _, b := range bootstrapNodes {
+				err := config.BootstrapPeers.Set(b)
+				if err != nil {
+					panic(err)
+				}
+
 		}
 
-		kdht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
+		kdht, err := ipfs.NewDHT(ctx, h, config.BootstrapPeers)
+		kdht.Validator = NullValidator{}
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -463,7 +512,13 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 func (s *server) LeaveCluster(ctx context.Context, in *pb.RequestJoinMessage) (*pb.Ack, error) {
 	address := in.GetIp()
 
-	err := raftN.RemoveNode(address)
+	err := raftN.Leave(address)
+	if err != nil {
+		log.Println("ERROR IN LEAVING", err)
+		return nil, err
+	}
+
+	err = raftN.RemoveNode(address)
 	if err != nil {
 		log.Println("ERROR IN LEAVING", err)
 		return nil, err
@@ -479,7 +534,12 @@ func (s *server) RequestJoin(ctx context.Context, in *pb.RequestJoinMessage) (*p
 	// If this node is the master
 	leader := raftN.GetLeader()
 	if raftN.GetLeader() == ip.String() {
-		err := raftN.AddNode(address)
+		err := raftN.Join(address)
+		if err != nil {
+			return nil, err
+		}
+
+		err = raftN.AddNode(address)
 		if err != nil {
 			return nil, err
 		}
@@ -514,18 +574,23 @@ func init() {
 	database = utils.GetConfiguration().Database
 }
 
+var kdht *dht.IpfsDHT
+
 func migrationThread(ctx context.Context) {
 	for {
 		migrationKeys := migration.EvaluateMigration()
 
 		for _, k := range migrationKeys {
-			value, _, err := kdht.GetValue(ctx, k)
+			value, err := kdht.GetValue(ctx, k)
 			if err != nil {
 				continue
 			}
 
+			var target string
+			json.Unmarshal(value, &target)
+
 			// Try to contact server
-			c, _, err := ContactServer(value)
+			c, _, err := ContactServer(target)
 			if err != nil {
 				continue
 			}
@@ -544,8 +609,8 @@ func migrationThread(ctx context.Context) {
 			}
 
 			// Modify dht
-			/*dhtInput, _ := json.Marshal(cluster)
-			err = kdht.PutCluster*/
+			dhtInput, _ := json.Marshal(cluster)
+			err = kdht.PutValue(ctx, k, dhtInput)
 		}
 
 		time.Sleep(10 * time.Second)
@@ -558,7 +623,7 @@ func initializeHost(ctx context.Context) string {
 
 	flag.Int64Var(&config.Seed, "seed", 0, "Seed value for generating a PeerID, 0 is random")
 
-	h, err = dht.NewHost(ctx, config.Seed, config.Port)
+	h, err = ipfs.NewHost(ctx, config.Seed, config.Port)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -640,7 +705,7 @@ func main() {
 	// Initialize Raft replication
 	cluster = utils.NewClusterRoutine()
 	raftN = replication.InitializeRaft(ip.String(), database, cluster)
-	time.Sleep(3 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	ctx := context.Background()
 	ipStr := initializeHost(ctx)
@@ -651,35 +716,23 @@ func main() {
 		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.N, utils.AwsRegion)
 	} else if regService == 1 {
 		registerCluster = cloud.RegisterStub(ip.String(), ipStr, utils.N, utils.AwsRegion)
-	} /*else {
-		registerCluster = cloud.RegisterStub2(ip.String(), "tabellone", utils.Replicas, utils.AwsRegion)
-
-		isCrashed := os.Getenv("CRASHED")
-		if isCrashed == "y" {
-			log.Println("NODE HAS CRASHED")
-			crashed = 1
-		} else {
-			crashed = 2
-		}
-
-		for j := 0; j < len(registerCluster.IpList); j++ {
-			r := registerCluster.IpList[j]
-			replicaSet = append(replicaSet, r.Ip)
-		}
-	}*/
+	}
 
 	// Ready to start dht
 	if len(registerCluster.IpList) > 0 {
 		for j := 0; j < len(registerCluster.IpList); j++ {
 			r := registerCluster.IpList[j]
-			replicaSet = append(replicaSet, r.Ip)
-			err := config.BootstrapPeers.Set(r.IpString)
-			if err != nil {
-				panic(err)
+			if r.IpString != ipStr {
+				replicaSet = append(replicaSet, r.Ip)
+				err := config.BootstrapPeers.Set(r.IpString)
+				if err != nil {
+					panic(err)
+				}
 			}
 		}
 
-		kdht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
+		kdht, err = ipfs.NewDHT(ctx, h, config.BootstrapPeers)
+		kdht.Validator = NullValidator{}
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -697,24 +750,20 @@ func main() {
 		}
 
 	} else if len(ipList) == (utils.N - 1) {
-		log.Println("INITIATING CLUSTER")
 		// If master to a cluster
-		cluster.Join(ip.String())
-		for _, addr := range replicaSet {
-			cluster.Join(addr)
-		}
-
 		log.Println("Replicas found: ", replicaSet)
 		log.Println("Cluster: ", cluster)
+
+		var clusterBootstrap []string
+		var clusterAddresses []string
+		for _, node := range ipList {
+			clusterBootstrap = append(clusterBootstrap, node.IpString)
+			clusterAddresses = append(clusterAddresses, node.Ip)
+		}
 
 		for _, node := range ipList {
 			var err error
 			var c pb.OperationsClient
-
-			leader := raftN.GetLeader()
-			if leader != ip.String() {
-				time.Sleep(3 * time.Second)
-			}
 
 			log.Printf("Asking %s to join", node.Ip)
 
@@ -722,8 +771,7 @@ func main() {
 				c, _, err = ContactServer(node.Ip)
 				log.Println("Failed to contact, trying again...")
 			}
-
-			_, err = c.Join(context.Background(), &pb.JoinMessage{Bootstrap: ipStr})
+			_, err = c.Join(context.Background(), &pb.JoinMessage{Bootstrap: clusterBootstrap, Cluster: clusterAddresses})
 			if err != nil {
 				log.Fatal("ERROR in requesting join", err)
 			}
@@ -732,10 +780,16 @@ func main() {
 
 			err = raftN.AddNode(node.Ip)
 			if err != nil {
-				log.Fatal(err)
+				log.Fatal("ADDING NODE", err)
 			}
-			log.Printf("Done adding %s to raft", node.Ip)
 
+			log.Printf("Done adding %s to raft", node.Ip)
+			
+		}
+
+		raftN.Join(ip.String())
+		for _, addr := range replicaSet {
+			raftN.Join(addr)
 		}
 
 	} else if len(replicaSet) >= utils.N {
@@ -754,35 +808,36 @@ func main() {
 	}
 
 	go func() {
-		var dab *badger.DB
-		dab = database.(db.BadgerDB).Db
+		//var dab *badger.DB
+		//dab = database.(db.BadgerDB).Db
 		for {
-			log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats())
-			log.Println("____________________Begin printing db____________________")
-			err := dab.View(func(txn *badger.Txn) error {
-				opts := badger.DefaultIteratorOptions
-				opts.PrefetchSize = 10
-				it := txn.NewIterator(opts)
-				defer it.Close()
-				for it.Rewind(); it.Valid(); it.Next() {
-					item := it.Item()
-					k := item.Key()
-					err := item.Value(func(v []byte) error {
-						fmt.Printf("key=%s, value=%s\n", k, v)
-						return nil
-					})
-					if err != nil {
-						return err
+			log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats()["latest_configuration"])
+			/*
+				log.Println("____________________Begin printing db____________________")
+				err := dab.View(func(txn *badger.Txn) error {
+					opts := badger.DefaultIteratorOptions
+					opts.PrefetchSize = 10
+					it := txn.NewIterator(opts)
+					defer it.Close()
+					for it.Rewind(); it.Valid(); it.Next() {
+						item := it.Item()
+						k := item.Key()
+						err := item.Value(func(v []byte) error {
+							fmt.Printf("key=%s, value=%s\n", k, v)
+							return nil
+						})
+						if err != nil {
+							return err
+						}
 					}
+					return nil
+				})
+				log.Println("____________________End printing db____________________")
+				if err != nil {
+					log.Println("There is a problem")
 				}
-				return nil
-			})
-			log.Println("____________________End printing db____________________")
-			if err != nil {
-				log.Println("There is a problem")
-			}
-
-			time.Sleep(30 * time.Second)
+			*/
+			time.Sleep(15 * time.Second)
 		}
 	}()
 

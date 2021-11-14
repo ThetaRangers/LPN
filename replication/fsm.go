@@ -72,12 +72,12 @@ func (f FSM) Apply(log *raft.Log) interface{} {
 				Error: f.db.Del(payload.Key),
 			}
 		case "JOIN":
-			f.cluster.Join(string(payload.Value[0]))
+			f.cluster.Join(string(payload.Key))
 			return &ApplyResponse{
 				Error: nil,
 			}
 		case "LEAVE":
-			f.cluster.Leave(string(payload.Value[0]))
+			f.cluster.Leave(string(payload.Key))
 			return &ApplyResponse{
 				Error: nil,
 			}
