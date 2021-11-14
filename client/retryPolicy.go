@@ -1,4 +1,4 @@
-package main
+package client
 
 var RetryPolicy = `{
 		"methodConfig": [{
