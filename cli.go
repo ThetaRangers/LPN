@@ -12,9 +12,13 @@ func completer(d prompt.Document) []prompt.Suggest {
 	s := []prompt.Suggest{
 		{Text: "get", Description: "Get value"},
 		{Text: "put", Description: "Put key and value"},
+		{Text: "append", Description: "Append a value to a key"},
+		{Text: "del", Description: "Delete key"},
 		{Text: "connect", Description: "Connect to a node"},
 		{Text: "disconnect", Description: "Disconnect from the node"},
 		{Text: "quit", Description: "Quit from the cli"},
+		{Text: "lnode", Description: "List nodes from local"},
+		{Text: "lclosest", Description: "Get closest node from local"},
 	}
 	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
 }
@@ -83,6 +87,41 @@ func main() {
 				}
 			} else {
 				fmt.Println("Invalid number of parameters: put <key> <value>")
+			}
+		case "append":
+			if len(parts) >= 3 {
+				if !connected {
+					fmt.Println("Not connected to a client")
+				} else {
+					args := len(parts[2:])
+					input := make([][]byte, args)
+
+					for i, v := range parts[2:] {
+						input[i] = []byte(v)
+					}
+
+					err := conn.Append([]byte(parts[1]), input)
+					if err != nil {
+						fmt.Println("Error in append: ", err)
+					} else {
+						fmt.Println("OK")
+					}
+				}
+			} else {
+				fmt.Println("Invalid number of parameters: append <key> <value>")
+			}
+		case "del":
+			if len(parts) == 2 {
+				if !connected {
+					fmt.Println("Not connected to a client")
+				} else {
+					err := conn.Del([]byte(parts[1]))
+					if err != nil {
+						fmt.Println("Error in del: ", err)
+					}
+				}
+			} else {
+				fmt.Println("Invalid number of parameters: del <key>")
 			}
 		case "lnodes":
 			if len(parts) == 2 {
