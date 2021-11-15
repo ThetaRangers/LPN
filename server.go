@@ -92,7 +92,7 @@ func (al *addrList) Set(value string) error {
 func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	addr := ip + ":50051"
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithDefaultServiceConfig(retryPolicy))
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithDefaultServiceConfig(retryPolicy))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -105,6 +105,7 @@ func getAliveReplica(ctx context.Context, ip string) (pb.OperationsClient, *grpc
 	c, conn, err := ContactServer(ip)
 	if err != nil {
 		replicas, err2 := kdht.GetCluster(ctx, ip)
+		log.Println("DHT", replicas, err2)
 		if err2 != nil {
 			return nil, nil, err2
 		}
@@ -140,18 +141,22 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	}
 
 	if !cluster.Contains(value) {
+		log.Println("QUI")
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.External}
 
 		// Try node list
 		c, _, err := getAliveReplica(ctx, value)
+		log.Println(c, err)
 		if err != nil {
 			return &pb.Value{Value: [][]byte{}}, err
 		}
 
 		result, err := c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
-
-		return result, nil
-		//return &pb.Value{Value: [][]byte{}}, errors.New("All replicas down")
+		if err != nil {
+			return &pb.Value{Value: [][]byte{}}, err
+		} else {
+			return result, nil
+		}
 
 	} else {
 		value, _ := database.Get(in.GetKey())
@@ -464,6 +469,8 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 			log.Fatal("ERROR IN SHUTDOWN", err)
 		}
 
+		cluster.Invalidate()
+
 		raftN = replication.ReInitializeRaft(ip.String(), &database, &cluster, &dhtRoutine)
 	} else {
 		var err error
@@ -622,6 +629,7 @@ func initializeHost(ctx context.Context) string {
 }
 
 func main() {
+	log.Println("\n          _____            _____                    _____          \n         /\\    \\          /\\    \\                  /\\    \\         \n        /::\\____\\        /::\\    \\                /::\\____\\        \n       /:::/    /       /::::\\    \\              /::::|   |        \n      /:::/    /       /::::::\\    \\            /:::::|   |        \n     /:::/    /       /:::/\\:::\\    \\          /::::::|   |        \n    /:::/    /       /:::/__\\:::\\    \\        /:::/|::|   |        \n   /:::/    /       /::::\\   \\:::\\    \\      /:::/ |::|   |        \n  /:::/    /       /::::::\\   \\:::\\    \\    /:::/  |::|   | _____  \n /:::/    /       /:::/\\:::\\   \\:::\\____\\  /:::/   |::|   |/\\    \\ \n/:::/____/       /:::/  \\:::\\   \\:::|    |/:: /    |::|   /::\\____\\\n\\:::\\    \\       \\::/    \\:::\\  /:::|____|\\::/    /|::|  /:::/    /\n \\:::\\    \\       \\/_____/\\:::\\/:::/    /  \\/____/ |::| /:::/    / \n  \\:::\\    \\               \\::::::/    /           |::|/:::/    /  \n   \\:::\\    \\               \\::::/    /            |::::::/    /   \n    \\:::\\    \\               \\::/____/             |:::::/    /    \n     \\:::\\    \\               ~~                   |::::/    /     \n      \\:::\\    \\                                   /:::/    /      \n       \\:::\\____\\                                 /:::/    /       \n        \\::/    /                                 \\::/    /        \n         \\/____/                                   \\/____/         \n                                                                   ")
 	//Get ip address
 	iFaces, err := net.Interfaces()
 	// handle err

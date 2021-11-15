@@ -135,14 +135,14 @@ func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (
 		list = append(list, RegisterStruct{Ip: ip, NodeId: nodeId, Cluster: clusterId, Attached: false})
 
 		lock.Unlock()
-		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: false, Bootstrap: bootstrap}, nil
+		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: false}, nil
 	} else {
 		// Attach
 		list = append(list, RegisterStruct{Ip: ip, NodeId: nodeId, Cluster: maxCluster, Attached: true})
 		addresses, ids := getExistingCluster()
 
 		lock.Unlock()
-		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: false, Bootstrap: bootstrap}, nil
+		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: false}, nil
 	}
 }
 

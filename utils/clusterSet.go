@@ -41,3 +41,9 @@ func (s ClusterSet) GetAll() []string {
 	}
 	return clusterSlice
 }
+
+func (s ClusterSet) Invalidate() {
+	for k:= range s.cluster {
+		delete(s.cluster, k)
+	}
+}

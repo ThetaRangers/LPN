@@ -18,7 +18,6 @@ message Cluster {
   repeated string addresses = 1;
   repeated string  nodeIdS = 2;
   bool crashed = 3;
-  string bootstrap = 4;
 }
 
 message EmptyMessage {}

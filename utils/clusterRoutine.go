@@ -1,11 +1,12 @@
 package utils
 
 const (
-	JoinOp     = 0
-	LeaveOp    = 1
-	ContainsOp = 2
-	LenOp      = 3
-	GetAllOp   = 4
+	JoinOp       = 0
+	LeaveOp      = 1
+	ContainsOp   = 2
+	LenOp        = 3
+	GetAllOp     = 4
+	InvalidateOp = 5
 )
 
 type localOperation struct {
@@ -19,7 +20,7 @@ type ClusterRoutine struct {
 	ch      chan localOperation
 }
 
-func (c ClusterRoutine) run() {
+func (c *ClusterRoutine) run() {
 	var op localOperation
 	for {
 		op = <-c.ch
@@ -34,37 +35,46 @@ func (c ClusterRoutine) run() {
 			op.ch <- c.cluster.Len()
 		case GetAllOp:
 			op.ch <- c.cluster.GetAll()
+		case InvalidateOp:
+			c.cluster.Invalidate()
+			op.ch <- struct{}{}
 		}
 	}
 }
 
-func (c ClusterRoutine) Join(ip string) {
+func (c *ClusterRoutine) Join(ip string) {
 	c.ch <- localOperation{operation: JoinOp, ip: ip}
 }
 
-func (c ClusterRoutine) Leave(ip string) {
+func (c *ClusterRoutine) Leave(ip string) {
 	c.ch <- localOperation{operation: LeaveOp, ip: ip}
 }
 
-func (c ClusterRoutine) Contains(ip string) bool {
+func (c *ClusterRoutine) Contains(ip string) bool {
 	channel := make(chan interface{})
 	c.ch <- localOperation{operation: ContainsOp, ip: ip, ch: channel}
 	tmp := <-channel
 	return tmp.(bool)
 }
 
-func (c ClusterRoutine) Len() int {
+func (c *ClusterRoutine) Len() int {
 	channel := make(chan interface{})
 	c.ch <- localOperation{operation: LenOp, ch: channel}
 	tmp := <-channel
 	return tmp.(int)
 }
 
-func (c ClusterRoutine) GetAll() []string {
+func (c *ClusterRoutine) GetAll() []string {
 	channel := make(chan interface{})
 	c.ch <- localOperation{operation: GetAllOp, ch: channel}
 	tmp := <-channel
 	return tmp.([]string)
+}
+
+func (c *ClusterRoutine) Invalidate() {
+	channel := make(chan interface{})
+	c.ch <- localOperation{operation: InvalidateOp, ch: channel}
+	<-channel
 }
 
 func NewClusterRoutine() ClusterRoutine {

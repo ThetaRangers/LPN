@@ -27,7 +27,6 @@ type ReplicaSet struct {
 	Crashed   int        `json:"crashed"`
 	Valid     int        `json:"valid"`
 	IpList    []IpStruct `json:"ipList"`
-	Bootstrap string
 }
 
 func setupClient(region string) *lambda.Lambda {
@@ -94,7 +93,7 @@ func RegisterStub(ip string, ipStr string, n int, region string) ReplicaSet {
 		ipList = append(ipList, IpStruct{Ip: k, IpString: nodeIds[index]})
 	}
 
-	r := ReplicaSet{Valid: 0, Crashed: i, IpList: ipList, Bootstrap: res.GetBootstrap()}
+	r := ReplicaSet{Valid: 0, Crashed: i, IpList: ipList}
 	return r
 }
 
