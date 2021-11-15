@@ -157,16 +157,16 @@ func (r RaftStruct) RemoveNode(ip string) error {
 	return nil
 }
 
-func ReInitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutine) *RaftStruct {
+func ReInitializeRaft(ip string, db *database.Database, cluster *utils.ClusterRoutine, dht *DhtRoutine) *RaftStruct {
 	err := os.RemoveAll("raft-data")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return InitializeRaft(ip, db, cluster)
+	return InitializeRaft(ip, db, cluster, dht)
 }
 
-func InitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutine) *RaftStruct {
+func InitializeRaft(ip string, db *database.Database, cluster *utils.ClusterRoutine, dht *DhtRoutine) *RaftStruct {
 	err := os.RemoveAll("raft-data")
 	if err != nil {
 		panic(err)
@@ -183,7 +183,7 @@ func InitializeRaft(ip string, db database.Database, cluster utils.ClusterRoutin
 
 	raftConf.SnapshotThreshold = 1024
 
-	fsmStore := NewFSM(db, cluster)
+	fsmStore := NewFSM(db, cluster, dht)
 
 	tcpTimeout := timeout
 	var raftBinAddr = fmt.Sprintf("%s:%d", ip, raftPort)

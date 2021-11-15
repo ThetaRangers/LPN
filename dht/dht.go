@@ -84,7 +84,7 @@ func (k *KDht) GetCluster(ctx context.Context, key string) ([]string, error) {
 	}
 }
 
-func (k *KDht) PutCluster(ctx context.Context, key string, value utils.ClusterRoutine) error {
+func (k *KDht) PutCluster(ctx context.Context, key string, value *utils.ClusterRoutine) error {
 	dhtKey := clusterChar + key
 	cluster := value.GetAll()
 	dhtValue, err := json.Marshal(cluster)

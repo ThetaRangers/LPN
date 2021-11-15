@@ -63,7 +63,7 @@ var ip net.IP
 var address string
 var channel chan migration.KeyOp
 var raftN *replication.RaftStruct
-
+var dhtRoutine replication.DhtRoutine
 var kdht *dht.KDht
 var config = Config{}
 var bootstrapNodes []string
@@ -101,6 +101,7 @@ func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 func getAliveReplica(ctx context.Context, ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	c, conn, err := ContactServer(ip)
 	if err != nil {
+		log.Println("MASTER HAS CRASHED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 		replicas, err2 := kdht.GetCluster(ctx, ip)
 		if err2 != nil {
 			return nil, nil, err2
@@ -436,7 +437,7 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 			log.Fatal("ERROR IN SHUTDOWN", err)
 		}
 
-		raftN = replication.ReInitializeRaft(ip.String(), database, cluster)
+		raftN = replication.ReInitializeRaft(ip.String(), &database, &cluster, &dhtRoutine)
 	} else {
 		var err error
 		bootstrapNodes := in.GetBootstrap()
@@ -452,6 +453,7 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 		if err != nil {
 			log.Fatal(err)
 		}
+		dhtRoutine.SetDht(kdht)
 	}
 
 	return &pb.Ack{Msg: "Ok"}, nil
@@ -648,7 +650,8 @@ func main() {
 
 	// Initialize Raft replication
 	cluster = utils.NewClusterRoutine()
-	raftN = replication.InitializeRaft(ip.String(), database, cluster)
+	dhtRoutine = replication.NewDhtRoutine(ip.String(), &cluster)
+	raftN = replication.InitializeRaft(ip.String(), &database, &cluster, &dhtRoutine)
 	time.Sleep(3 * time.Second)
 
 	ctx := context.Background()
@@ -679,6 +682,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		dhtRoutine.SetDht(kdht)
 	}
 
 	ipList := registerCluster.IpList

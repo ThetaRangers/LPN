@@ -39,8 +39,9 @@ func newSnapshotNoop() (raft.FSMSnapshot, error) {
 }
 
 type FSM struct {
-	db database.Database
-	cluster utils.ClusterRoutine
+	db *database.Database
+	cluster *utils.ClusterRoutine
+	dht *DhtRoutine
 }
 
 // Apply log is invoked once a log entry is committed.
@@ -60,24 +61,26 @@ func (f FSM) Apply(log *raft.Log) interface{} {
 		switch op {
 		case "PUT":
 			return &ApplyResponse{
-				Error: f.db.Put(payload.Key, payload.Value),
+				Error: (*f.db).Put(payload.Key, payload.Value),
 			}
 		case "APPEND":
-			_, err := f.db.Append(payload.Key, payload.Value)
+			_, err := (*f.db).Append(payload.Key, payload.Value)
 			return &ApplyResponse{
 				Error: err,
 			}
 		case "DELETE":
 			return &ApplyResponse{
-				Error: f.db.Del(payload.Key),
+				Error: (*f.db).Del(payload.Key),
 			}
 		case "JOIN":
 			f.cluster.Join(string(payload.Key))
+			f.dht.UpdateCluster()
 			return &ApplyResponse{
 				Error: nil,
 			}
 		case "LEAVE":
 			f.cluster.Leave(string(payload.Key))
+			f.dht.UpdateCluster()
 			return &ApplyResponse{
 				Error: nil,
 			}
@@ -118,7 +121,7 @@ func (f FSM) Restore(rClose io.ReadCloser) error {
 			return err
 		}
 
-		if err := f.db.Put(data.Key, data.Value); err != nil {
+		if err := (*f.db).Put(data.Key, data.Value); err != nil {
 			_, _ = fmt.Fprintf(os.Stdout, "[END RESTORE] error persist data %s\n", err.Error())
 			return err
 		}
@@ -138,9 +141,10 @@ func (f FSM) Restore(rClose io.ReadCloser) error {
 }
 
 // NewFSM raft.FSM implementation using badgerDB
-func NewFSM(database database.Database, cluster utils.ClusterRoutine) raft.FSM {
+func NewFSM(database *database.Database, cluster *utils.ClusterRoutine, dht *DhtRoutine) raft.FSM {
 	return &FSM{
 		db: database,
 		cluster: cluster,
+		dht: dht,
 	}
 }
