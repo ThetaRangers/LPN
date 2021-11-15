@@ -22,3 +22,15 @@ func RemoveFromList(slice []string, target string) []string {
 
 	return slice
 }
+
+func GetSize(target [][]byte) uint64 {
+	var count uint64
+	count = 0
+
+	for _, s := range target {
+		count = count + uint64(len(s))
+
+	}
+
+	return count
+}

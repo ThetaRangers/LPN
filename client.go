@@ -33,24 +33,4 @@ func main() {
 	}
 
 	fmt.Println(val)
-
-	err = conn.Append([]byte("a"), input)
-	if err != nil {
-		log.Error(err)
-	}
-
-	time.Sleep(time.Second)
-
-	/*
-		err = conn.Del([]byte("a"))
-		if err != nil {
-			log.Error(err)
-		}*/
-
-	val, err = conn.Get([]byte("a"))
-	if err != nil {
-		log.Error(err)
-	}
-
-	fmt.Println(val)
 }

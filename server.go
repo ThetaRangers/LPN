@@ -4,6 +4,7 @@ import (
 	"SDCC/cloud"
 	db "SDCC/database"
 	"SDCC/dht"
+	"SDCC/metadata"
 	"SDCC/migration"
 	pb "SDCC/operations"
 	"SDCC/replication"
@@ -27,6 +28,7 @@ const (
 	port       = ":50051"
 	mask       = "172.17.0.0/24"
 	regService = 1
+	threshold  = 300
 )
 
 var retryPolicy = `{
@@ -66,8 +68,9 @@ var raftN *replication.RaftStruct
 var dhtRoutine replication.DhtRoutine
 var kdht *dht.KDht
 var config = Config{}
-var bootstrapNodes []string
 var h host.Host
+
+var keyDb = metadata.GetKeyDb()
 
 func (al *addrList) String() string {
 	strs := make([]string, len(*al))
@@ -101,7 +104,6 @@ func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 func getAliveReplica(ctx context.Context, ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	c, conn, err := ContactServer(ip)
 	if err != nil {
-		log.Println("MASTER HAS CRASHED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 		replicas, err2 := kdht.GetCluster(ctx, ip)
 		if err2 != nil {
 			return nil, nil, err2
@@ -127,8 +129,10 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	log.Printf("Received: Get(%v)", in.GetKey())
 	key := string(in.GetKey())
 
-	value, _, err := kdht.GetValue(ctx, key)
-	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
+	value, onTheCloud, err := kdht.GetValue(ctx, key)
+	if onTheCloud {
+		//TODO GET FROM CLOUD
+	} else if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		//Not found in the dht or deleted
 		return &pb.Value{Value: [][]byte{}}, nil
 	} else if err != nil {
@@ -171,27 +175,37 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	ctxDht := context.Background()
 	key := string(in.GetKey())
 
+	var offload bool
 	//Check where is stored
 	value, _, err := kdht.GetValue(ctxDht, key)
 	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
-		log.Println("Not found responsible node, putting in local db....")
-		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
-		// Not found in the dht or deleted
-
-		leader := raftN.GetLeader()
-		if leader == ip.String() {
-			err = raftN.Put(in.GetKey(), in.GetValue())
+		if utils.GetSize(in.GetValue()) > threshold {
+			// TODO OFFLOAD TO THE CLOUD
+			address = "onTheCloud"
+			offload = true
 		} else {
-			c, _, _ := ContactServer(leader)
+			log.Println("Not found responsible node, putting in local db....")
+			channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
+			// Not found in the dht or deleted
 
-			_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+			keyDb.PutKey(key)
+			leader := raftN.GetLeader()
+			if leader == ip.String() {
+				err = raftN.Put(in.GetKey(), in.GetValue())
+			} else {
+				c, _, _ := ContactServer(leader)
+
+				_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+			}
+
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+
+			offload = false
 		}
 
-		if err != nil {
-			return &pb.Ack{Msg: "Err"}, err
-		}
-
-		err := kdht.PutValue(ctxDht, string(in.GetKey()), address, false)
+		err := kdht.PutValue(ctxDht, string(in.GetKey()), address, offload)
 		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
 		}
@@ -260,28 +274,39 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	key := string(in.GetKey())
 
 	//Check where is stored
+	var offload bool
+	//Check where is stored
 	value, _, err := kdht.GetValue(ctx, key)
-
 	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
-		//Not found in the dht or deleted
-		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
-
-		leader := raftN.GetLeader()
-		if leader == ip.String() {
-			err = raftN.Put(in.GetKey(), in.GetValue())
+		if utils.GetSize(in.GetValue()) > threshold {
+			// TODO OFFLOAD TO THE CLOUD
+			address = "onTheCloud"
+			offload = true
 		} else {
-			c, _, _ := ContactServer(leader)
+			log.Println("Not found responsible node, putting in local db....")
+			channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
+			// Not found in the dht or deleted
 
-			_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+			keyDb.PutKey(key)
+			leader := raftN.GetLeader()
+			if leader == ip.String() {
+				err = raftN.Put(in.GetKey(), in.GetValue())
+			} else {
+				c, _, _ := ContactServer(leader)
+
+				_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+			}
+
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+
+			offload = false
 		}
+
+		err := kdht.PutValue(ctx, string(in.GetKey()), address, offload)
 		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
-		}
-
-		//Set
-		err := kdht.PutValue(ctx, string(in.GetKey()), ip.String(), false)
-		if err != nil {
-			return nil, err
 		}
 
 		return &pb.Ack{Msg: "Ok"}, nil
@@ -341,8 +366,10 @@ func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, 
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	key := string(in.GetKey())
 	// Get responsible from dht
-	value, _, err := kdht.GetValue(ctx, key)
-	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
+	value, onTheCloud, err := kdht.GetValue(ctx, key)
+	if onTheCloud {
+		// TODO DELETE KEY FROM CLOUD
+	} else if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		// Not found in the dht or already deleted
 		return &pb.Ack{Msg: "Ok"}, nil
 	} else if err != nil {
@@ -523,29 +550,35 @@ func init() {
 	database = utils.GetConfiguration().Database
 }
 
-func migrationThread(ctx context.Context) {
+func houseKeeper(ctx context.Context) {
+	var val [][]byte
 	for {
+		// Evaluate migration
 		migrationKeys := migration.EvaluateMigration()
 
 		for _, k := range migrationKeys {
-			value, _, err := kdht.GetValue(ctx, k)
+			value, fromCloud, err := kdht.GetValue(ctx, k)
 			if err != nil {
 				continue
 			}
 
-			// Try to contact server
-			c, _, err := ContactServer(value)
-			if err != nil {
+			if fromCloud {
 				continue
-			}
+			} else {
+				// Try to contact server
+				c, _, err := ContactServer(value)
+				if err != nil {
+					continue
+				}
 
-			outcome, err := c.Migration(ctx, &pb.KeyCost{Key: []byte(k), Cost: uint64(migration.GetCostExternal(k, time.Now()))})
-			if err != nil || !outcome.Out {
-				continue
+				outcome, err := c.Migration(ctx, &pb.KeyCost{Key: []byte(k), Cost: uint64(migration.GetCostExternal(k, time.Now()))})
+				if err != nil || !outcome.Out {
+					continue
+				}
+				val = outcome.Value
 			}
 
 			// Do migration
-			val := outcome.Value
 			migration.SetMigrated(k)
 			err = raftN.Put([]byte(k), val)
 			if err != nil {
@@ -621,7 +654,7 @@ func main() {
 	go migration.ManagementThread(channel, utils.CostRead, utils.CostWrite, utils.MigrationWindowMinutes)
 
 	// Initialize migration thread
-	go migrationThread(context.Background())
+	go houseKeeper(context.Background())
 
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
@@ -781,8 +814,10 @@ func main() {
 			if err != nil {
 				log.Println("There is a problem")
 			}
-*/
-			log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats()["latest_configuration"])
+			*/
+			//log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats()["latest_configuration"])
+
+			log.Printf("Keys of %s: %s", ip.String(), keyDb.GetKeys())
 			time.Sleep(15 * time.Second)
 		}
 	}()

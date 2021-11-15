@@ -2,6 +2,7 @@ package replication
 
 import (
 	"SDCC/database"
+	"SDCC/metadata"
 	"SDCC/utils"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,8 @@ type ApplyResponse struct {
 	Error error
 }
 
+var keyDb = metadata.GetKeyDb()
+
 // snapshotNoop handle noop snapshot
 type snapshotNoop struct{}
 
@@ -39,9 +42,9 @@ func newSnapshotNoop() (raft.FSMSnapshot, error) {
 }
 
 type FSM struct {
-	db *database.Database
+	db      *database.Database
 	cluster *utils.ClusterRoutine
-	dht *DhtRoutine
+	dht     *DhtRoutine
 }
 
 // Apply log is invoked once a log entry is committed.
@@ -64,11 +67,16 @@ func (f FSM) Apply(log *raft.Log) interface{} {
 				Error: (*f.db).Put(payload.Key, payload.Value),
 			}
 		case "APPEND":
-			_, err := (*f.db).Append(payload.Key, payload.Value)
+			val, err := (*f.db).Append(payload.Key, payload.Value)
+			if utils.GetSize(val) > 300 {
+				// TODO REJECT MODERNITY EMBRACE MONKEY
+			}
+
 			return &ApplyResponse{
 				Error: err,
 			}
 		case "DELETE":
+			keyDb.DelKey(string(payload.Key))
 			return &ApplyResponse{
 				Error: (*f.db).Del(payload.Key),
 			}
@@ -143,8 +151,8 @@ func (f FSM) Restore(rClose io.ReadCloser) error {
 // NewFSM raft.FSM implementation using badgerDB
 func NewFSM(database *database.Database, cluster *utils.ClusterRoutine, dht *DhtRoutine) raft.FSM {
 	return &FSM{
-		db: database,
+		db:      database,
 		cluster: cluster,
-		dht: dht,
+		dht:     dht,
 	}
 }

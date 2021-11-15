@@ -24,9 +24,10 @@ type IpStruct struct {
 }
 
 type ReplicaSet struct {
-	Crashed int        `json:"crashed"`
-	Valid   int        `json:"valid"`
-	IpList  []IpStruct `json:"ipList"`
+	Crashed   int        `json:"crashed"`
+	Valid     int        `json:"valid"`
+	IpList    []IpStruct `json:"ipList"`
+	Bootstrap string
 }
 
 func setupClient(region string) *lambda.Lambda {
@@ -68,7 +69,7 @@ func RegisterToTheNetwork(ip string, ipStr string, n int, region string) Replica
 }
 
 func RegisterStub(ip string, ipStr string, n int, region string) ReplicaSet {
-	addr := "192.168.1.56" + ":50052"
+	addr := "192.168.1.39" + ":50052"
 
 	conn, err := grpc.DialContext(context.Background(), addr, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -93,7 +94,7 @@ func RegisterStub(ip string, ipStr string, n int, region string) ReplicaSet {
 		ipList = append(ipList, IpStruct{Ip: k, IpString: nodeIds[index]})
 	}
 
-	r := ReplicaSet{Valid: 0, Crashed: i, IpList: ipList}
+	r := ReplicaSet{Valid: 0, Crashed: i, IpList: ipList, Bootstrap: res.GetBootstrap()}
 	return r
 }
 

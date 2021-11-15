@@ -21,6 +21,7 @@ type RegisterStruct struct {
 var list = make([]RegisterStruct, 0)
 var maxCluster = -1
 var lock sync.Mutex
+var bootstrap = ""
 
 type serverRegister struct {
 	pb.UnimplementedOperationsServer
@@ -120,6 +121,9 @@ func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (
 		// If not enough
 		if !present {
 			list = append(list, RegisterStruct{Ip: ip, NodeId: nodeId, Cluster: -1, Attached: false})
+			if bootstrap == "" {
+				bootstrap = nodeId
+			}
 		}
 
 		lock.Unlock()
@@ -131,14 +135,14 @@ func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (
 		list = append(list, RegisterStruct{Ip: ip, NodeId: nodeId, Cluster: clusterId, Attached: false})
 
 		lock.Unlock()
-		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: false}, nil
+		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: false, Bootstrap: bootstrap}, nil
 	} else {
 		// Attach
 		list = append(list, RegisterStruct{Ip: ip, NodeId: nodeId, Cluster: maxCluster, Attached: true})
 		addresses, ids := getExistingCluster()
 
 		lock.Unlock()
-		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: false}, nil
+		return &pb.Cluster{Addresses: addresses, NodeIdS: ids, Crashed: false, Bootstrap: bootstrap}, nil
 	}
 }
 
