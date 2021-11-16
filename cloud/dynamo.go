@@ -105,7 +105,7 @@ func DeleteItem(svc *dynamodb.DynamoDB, tableName, key string) {
 		log.Fatalf("Got error calling DeleteItem: %s", err)
 	}
 
-	fmt.Println("Deleted '" + key + " from table " + tableName)
+	log.Println(key + " deleted ")
 }
 
 func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues [][]byte) {
@@ -114,6 +114,8 @@ func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues [][]by
 
 	if length == 0 {
 		dynamoValues = []*dynamodb.AttributeValue{}
+		//avoid dynamo update
+		return
 	}
 
 	for i := 0; i < length; i++ {
@@ -146,37 +148,3 @@ func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues [][]by
 
 	log.Println("Appended completed")
 }
-
-/*func main() {
-
-	client := SetupClient(utils.AwsRegion)
-	key := "key"
-	value := make([][]byte, 0)
-	value = append(value, []byte("str1"))
-	value = append(value, []byte("bho"))
-	value = append(value, []byte("str2"))
-
-	PutItem(client, utils.DynamoTable, key, value)
-
-	retValue := GetItem(client, utils.DynamoTable, key)
-	length := len(retValue)
-	for i:=0; i< length; i++{
-		fmt.Println(string(retValue[i]))
-	}
-
-	value1 := make([][]byte, 0)
-	value1 = append(value1, []byte("at"))
-	value1 = append(value1, []byte("the"))
-	value1 = append(value1, []byte("end"))
-
-	AppendValue(client, utils.DynamoTable, key, value1)
-
-	retValue = GetItem(client, utils.DynamoTable, key)
-	length = len(retValue)
-	for i:=0; i< length; i++{
-		fmt.Println(string(retValue[i]))
-	}
-
-
-
-}*/
