@@ -50,10 +50,11 @@ func SetWrite(key string, m map[string][]TimeOp) {
 
 func SetMigrated(key string) {
 	master[key] = external[key]
+	external[key] = make([]TimeOp, 0)
 }
 
 func SetExported(key string) {
-	external[key] = make([]TimeOp, 0)
+	master[key] = make([]TimeOp, 0)
 }
 
 func updateAndEvaluate(key string, cost int, m map[string][]TimeOp) {

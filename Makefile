@@ -8,7 +8,7 @@ proto:
 	operations/operations.proto
 
 executable:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build server.go
+	GOOS=linux GOARCH=amd64 go build server.go
 
 docker_image:
 	DOCKER_BUILDKIT=1 docker build -t app .

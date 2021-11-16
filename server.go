@@ -419,10 +419,10 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 	keyBytes := in.GetKey()
 	k := string(keyBytes)
 
-	log.Println("Received migration request for ", k)
 	cost := uint64(migration.GetCostMaster(k, time.Now()))
+	log.Printf("Received migration request for %s: %d-%d", k, cost, in.GetCost())
 
-	if cost < in.Cost {
+	if cost < in.GetCost() {
 		// Do migration
 		value, err := database.Get(keyBytes)
 		if err != nil {
@@ -435,6 +435,7 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 		}
 
 		migration.SetExported(k)
+		keyDb.DelKey(k)
 
 		return &pb.Outcome{Out: true, Value: value}, nil
 	} else {
@@ -610,6 +611,7 @@ func houseKeeper(ctx context.Context) {
 
 			// Do migration
 			migration.SetMigrated(k)
+
 			keyDb.PutKey(k)
 			err = raftN.Put([]byte(k), val)
 			if err != nil {

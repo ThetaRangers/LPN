@@ -96,7 +96,6 @@ func createCluster() ([]string, []string, int) {
 		}
 	}
 
-	fmt.Println(tmpIp)
 	return tmpIp, tmpNodeId, maxCluster
 }
 
@@ -131,6 +130,7 @@ func (s *serverRegister) Register(ctx context.Context, in *pb.RegisterMessage) (
 	} else if clusterPossible() {
 		// Create new cluster
 		addresses, ids, clusterId := createCluster()
+		fmt.Printf("Cluster of %s: %s\n", ip, addresses)
 
 		list = append(list, RegisterStruct{Ip: ip, NodeId: nodeId, Cluster: clusterId, Attached: false})
 

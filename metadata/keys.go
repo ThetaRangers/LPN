@@ -4,6 +4,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"log"
 )
 
 type Keys struct {
@@ -55,7 +56,7 @@ func GetKeyDb() DbKeys {
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
-		panic("failed to connect database")
+		log.Fatalln(err)
 	}
 
 	mt := DbKeys{Db: db}
