@@ -1,5 +1,7 @@
 {
 	"Database":"badger",
 	"AwsRegion": "us-east-1",
-	"ReplicationFactor": "3"
+	"ReplicationFactor": "3",
+	"MigrationPeriod": "10",
+	"MigrationThreshold": "10"
 }

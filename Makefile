@@ -1,7 +1,7 @@
 .PHONY: proto clean executable all
 
 all: proto executable
-docker: proto executable docker_image
+docker: proto docker_image
 
 proto:
 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative \
