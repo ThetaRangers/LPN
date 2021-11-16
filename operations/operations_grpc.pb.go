@@ -28,7 +28,7 @@ type OperationsClient interface {
 	DelInternal(ctx context.Context, in *Key, opts ...grpc.CallOption) (*Ack, error)
 	Migration(ctx context.Context, in *KeyCost, opts ...grpc.CallOption) (*Outcome, error)
 	Ping(ctx context.Context, in *PingMessage, opts ...grpc.CallOption) (*Ack, error)
-	Join(ctx context.Context, in *JoinMessage, opts ...grpc.CallOption) (*Ack, error)
+	Join(ctx context.Context, in *JoinMessage, opts ...grpc.CallOption) (*JoinResponse, error)
 	RequestJoin(ctx context.Context, in *RequestJoinMessage, opts ...grpc.CallOption) (*JoinMessage, error)
 	LeaveCluster(ctx context.Context, in *RequestJoinMessage, opts ...grpc.CallOption) (*Ack, error)
 }
@@ -131,8 +131,8 @@ func (c *operationsClient) Ping(ctx context.Context, in *PingMessage, opts ...gr
 	return out, nil
 }
 
-func (c *operationsClient) Join(ctx context.Context, in *JoinMessage, opts ...grpc.CallOption) (*Ack, error) {
-	out := new(Ack)
+func (c *operationsClient) Join(ctx context.Context, in *JoinMessage, opts ...grpc.CallOption) (*JoinResponse, error) {
+	out := new(JoinResponse)
 	err := c.cc.Invoke(ctx, "/operations.Operations/Join", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -172,7 +172,7 @@ type OperationsServer interface {
 	DelInternal(context.Context, *Key) (*Ack, error)
 	Migration(context.Context, *KeyCost) (*Outcome, error)
 	Ping(context.Context, *PingMessage) (*Ack, error)
-	Join(context.Context, *JoinMessage) (*Ack, error)
+	Join(context.Context, *JoinMessage) (*JoinResponse, error)
 	RequestJoin(context.Context, *RequestJoinMessage) (*JoinMessage, error)
 	LeaveCluster(context.Context, *RequestJoinMessage) (*Ack, error)
 	mustEmbedUnimplementedOperationsServer()
@@ -212,7 +212,7 @@ func (UnimplementedOperationsServer) Migration(context.Context, *KeyCost) (*Outc
 func (UnimplementedOperationsServer) Ping(context.Context, *PingMessage) (*Ack, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
-func (UnimplementedOperationsServer) Join(context.Context, *JoinMessage) (*Ack, error) {
+func (UnimplementedOperationsServer) Join(context.Context, *JoinMessage) (*JoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Join not implemented")
 }
 func (UnimplementedOperationsServer) RequestJoin(context.Context, *RequestJoinMessage) (*JoinMessage, error) {

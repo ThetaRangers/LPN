@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/c-bata/go-prompt"
 	"google.golang.org/grpc"
+	"os"
 	"strings"
 )
 
@@ -31,6 +32,8 @@ var grpcConn *grpc.ClientConn
 func main() {
 	var err error
 
+	fmt.Println("__         ______   __   __        ______     __         __     ______     __   __     ______  \n/\\ \\       /\\  == \\ /\\ \"-.\\ \\      /\\  ___\\   /\\ \\       /\\ \\   /\\  ___\\   /\\ \"-.\\ \\   /\\__  _\\ \n\\ \\ \\____  \\ \\  _-/ \\ \\ \\-.  \\     \\ \\ \\____  \\ \\ \\____  \\ \\ \\  \\ \\  __\\   \\ \\ \\-.  \\  \\/_/\\ \\/ \n \\ \\_____\\  \\ \\_\\    \\ \\_\\\\\"\\_\\     \\ \\_____\\  \\ \\_____\\  \\ \\_\\  \\ \\_____\\  \\ \\_\\\\\"\\_\\    \\ \\_\\ \n  \\/_____/   \\/_/     \\/_/ \\/_/      \\/_____/   \\/_____/   \\/_/   \\/_____/   \\/_/ \\/_/     \\/_/ \n                                                                                                ")
+
 	for {
 
 		t := prompt.Input(">>> ", completer,
@@ -48,7 +51,7 @@ func main() {
 
 		switch command {
 		case "quit":
-			return
+			os.Exit(0)
 		case "get":
 			if len(parts) == 2 {
 				if !connected {

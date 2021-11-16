@@ -15,9 +15,14 @@ service Operations {
   rpc DelInternal (Key) returns (Ack) {}
   rpc Migration (KeyCost) returns (Outcome) {}
   rpc Ping(PingMessage) returns (Ack) {}
-  rpc Join(JoinMessage) returns (Ack) {}
+  rpc Join(JoinMessage) returns (JoinResponse) {}
   rpc RequestJoin(RequestJoinMessage) returns (JoinMessage) {}
   rpc LeaveCluster(RequestJoinMessage) returns (Ack) {}
+}
+
+message JoinResponse {
+  repeated string keys = 1;
+  repeated bytes values = 2;
 }
 
 message JoinMessage {

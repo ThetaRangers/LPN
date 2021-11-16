@@ -10,9 +10,11 @@ import (
 	"SDCC/replication"
 	"SDCC/utils"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/dgraph-io/badger"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/multiformats/go-multiaddr"
@@ -443,15 +445,18 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 }
 
 // Join Raft leader calls this to ask to Join the cluster
-func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) {
+func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.JoinResponse, error) {
+	var keys = make([]string, 0)
+	var values = make([][]byte, 0)
+
 	if cluster.Len() != 0 {
 		// If node is part of a cluster and needs to transfer
 		// TODO transfer cluster
 
 		log.Println("Leaving old cluster: ", cluster)
 		leader := raftN.GetLeader()
-		log.Println("Leader is ", leader)
 		c, _, err := ContactServer(leader)
+		//defer conn.Close()
 		if err != nil {
 			log.Println("ERROR", err)
 			return nil, err
@@ -469,9 +474,27 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 			log.Fatal("ERROR IN SHUTDOWN", err)
 		}
 
+		raftN = replication.ReInitializeRaft(ip.String(), &database, &cluster, &dhtRoutine)
+
+		log.Println("Transferring keys")
+		myKeys := keyDb.GetKeys()
 		cluster.Invalidate()
 
-		raftN = replication.ReInitializeRaft(ip.String(), &database, &cluster, &dhtRoutine)
+		for _, k := range myKeys {
+			keys = append(keys, k)
+
+			val, _ := database.Get([]byte(k))
+
+			buffer, _ := json.Marshal(val)
+			values = append(values, buffer)
+
+			_, err := c.Del(ctx, &pb.Key{Key: []byte(k)})
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		migration.Reset()
 	} else {
 		var err error
 		bootstrapNodes := in.GetBootstrap()
@@ -490,7 +513,7 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.Ack, error) 
 		dhtRoutine.SetDht(kdht)
 	}
 
-	return &pb.Ack{Msg: "Ok"}, nil
+	return &pb.JoinResponse{Keys: keys, Values: values}, nil
 }
 
 // LeaveCluster used to leave a cluster
@@ -587,6 +610,7 @@ func houseKeeper(ctx context.Context) {
 
 			// Do migration
 			migration.SetMigrated(k)
+			keyDb.PutKey(k)
 			err = raftN.Put([]byte(k), val)
 			if err != nil {
 				return
@@ -744,6 +768,9 @@ func main() {
 
 		var clusterBootstrap []string
 		var clusterAddresses []string
+		var keys []string
+		var values [][][]byte
+
 		for _, node := range ipList {
 			clusterBootstrap = append(clusterBootstrap, node.IpString)
 			clusterAddresses = append(clusterAddresses, node.Ip)
@@ -760,9 +787,18 @@ func main() {
 				log.Println("Failed to contact, trying again...")
 			}
 
-			_, err = c.Join(context.Background(), &pb.JoinMessage{Bootstrap: clusterBootstrap, Cluster: clusterAddresses})
+			res, err := c.Join(context.Background(), &pb.JoinMessage{Bootstrap: clusterBootstrap, Cluster: clusterAddresses})
 			if err != nil {
 				log.Fatal("ERROR in requesting join", err)
+			}
+
+			keys = append(keys, res.GetKeys()...)
+
+			for _, b := range res.GetValues() {
+				var buffer [][]byte
+				json.Unmarshal(b, &buffer)
+
+				values = append(values, buffer)
 			}
 
 			log.Printf("Adding %s to raft, leader is %s", node.Ip, raftN.GetLeader())
@@ -774,9 +810,16 @@ func main() {
 			log.Printf("Done adding %s to raft", node.Ip)
 
 		}
+
 		raftN.Join(ip.String())
 		for _, addr := range replicaSet {
 			raftN.Join(addr)
+		}
+
+		log.Println("Migrating keys")
+		// Set keys
+		for i, k := range keys {
+			raftN.Put([]byte(k), values[i])
 		}
 
 	} else if len(replicaSet) >= utils.N {
@@ -795,10 +838,10 @@ func main() {
 	}
 
 	go func() {
-		/*var dab *badger.DB
-		dab = database.(db.BadgerDB).Db*/
+		var dab *badger.DB
+		dab = database.(db.BadgerDB).Db
 		for {
-			/*log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats())
+			log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats())
 			log.Println("____________________Begin printing db____________________")
 			err := dab.View(func(txn *badger.Txn) error {
 				opts := badger.DefaultIteratorOptions
@@ -822,10 +865,9 @@ func main() {
 			if err != nil {
 				log.Println("There is a problem")
 			}
-			*/
-			//log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats()["latest_configuration"])
 
-			log.Printf("Keys of %s: %s", ip.String(), keyDb.GetKeys())
+			//log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats()["latest_configuration"])
+			log.Printf("\n\nKeys of %s: %s", ip.String(), keyDb.GetKeys())
 			time.Sleep(15 * time.Second)
 		}
 	}()

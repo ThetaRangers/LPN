@@ -34,6 +34,12 @@ type KeyOp struct {
 	Mode int
 }
 
+func Reset() {
+	master = make(map[string][]TimeOp)
+	replica = make(map[string][]TimeOp)
+	external = make(map[string][]TimeOp)
+}
+
 func SetRead(key string, m map[string][]TimeOp) {
 	updateAndEvaluate(key, costRead, m)
 }
