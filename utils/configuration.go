@@ -16,6 +16,7 @@ const (
 	MigrationWindowMinutes = 10
 	CostRead               = 1
 	CostWrite              = 2
+	DynamoTable            = "cloud_storage"
 )
 
 type Configuration struct {

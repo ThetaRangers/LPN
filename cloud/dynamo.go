@@ -3,7 +3,6 @@ package cloud
 import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -12,7 +11,7 @@ import (
 
 type Item struct {
 	Key   string
-	Value []string
+	Value []string `dynamodbav:"ValueList,omitempty"`
 }
 
 func SetupClient(region string) *dynamodb.DynamoDB {
@@ -28,78 +27,14 @@ func SetupClient(region string) *dynamodb.DynamoDB {
 	return svc
 }
 
-func listTables(svc *dynamodb.DynamoDB) {
-	// create the input configuration instance
-	input := &dynamodb.ListTablesInput{}
-
-	fmt.Printf("Tables:\n")
-
-	for {
-		// Get the list of tables
-		result, err := svc.ListTables(input)
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case dynamodb.ErrCodeInternalServerError:
-					fmt.Println(dynamodb.ErrCodeInternalServerError, aerr.Error())
-				default:
-					fmt.Println(aerr.Error())
-				}
-			} else {
-				// Print the error, cast err to aws error.Error to get the Code and
-				// Message from an error.
-				fmt.Println(err.Error())
-			}
-			return
-		}
-
-		for _, n := range result.TableNames {
-			fmt.Println(*n)
-		}
-
-		// the maximum number of table names returned in a call is 100 (default), which requires us to make
-		// multiple calls to the ListTables function to retrieve all table names
-		input.ExclusiveStartTableName = result.LastEvaluatedTableName
-
-		if result.LastEvaluatedTableName == nil {
-			break
-		}
-	}
-}
-
-//key value table
-func createTable(svc *dynamodb.DynamoDB, tableName string) {
-	input := &dynamodb.CreateTableInput{
-		AttributeDefinitions: []*dynamodb.AttributeDefinition{
-			{
-				AttributeName: aws.String("Key"),
-				AttributeType: aws.String("S"),
-			},
-		},
-		KeySchema: []*dynamodb.KeySchemaElement{
-			{
-				AttributeName: aws.String("Key"),
-				KeyType:       aws.String("HASH"),
-			},
-		},
-		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(10),
-			WriteCapacityUnits: aws.Int64(10),
-		},
-		TableName: aws.String(tableName),
-	}
-
-	_, err := svc.CreateTable(input)
-	if err != nil {
-		log.Fatalf("Got error calling CreateTable: %s", err)
-	}
-
-	fmt.Println("Created the table", tableName)
-}
-
 //PutItem Override value for existing key
-func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value []string) {
-	newItem := Item{key, value}
+func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value [][]byte) {
+	val := make([]string, 0)
+	for i := 0; i < len(value); i++ {
+		val = append(val, string(value[i]))
+	}
+
+	newItem := Item{key, val}
 	av, err := dynamodbattribute.MarshalMap(newItem)
 	if err != nil {
 		log.Fatalf("Got error marshalling new movie item: %s", err)
@@ -115,14 +50,11 @@ func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value []string) {
 		log.Fatalf("Got error calling PutItem: %s", err)
 	}
 
-	fmt.Print("Successfully added ( " + newItem.Key)
-	for i := 0; i < len(newItem.Value); i++ {
-		fmt.Print("'" + newItem.Value[i] + "' ")
-	}
-	fmt.Println(") to table " + tableName)
+	log.Println("Successfully added " + newItem.Key)
+
 }
 
-func GetItem(svc *dynamodb.DynamoDB, tableName, key string) (Item, bool) {
+func GetItem(svc *dynamodb.DynamoDB, tableName, key string) [][]byte {
 	result, err := svc.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -138,8 +70,8 @@ func GetItem(svc *dynamodb.DynamoDB, tableName, key string) (Item, bool) {
 	item := Item{}
 
 	if result.Item == nil {
-		fmt.Println("Could not find '" + key + "'")
-		return item, false
+		log.Println("Could not find '" + key + "'")
+		return [][]byte{}
 	}
 
 	err = dynamodbattribute.UnmarshalMap(result.Item, &item)
@@ -147,11 +79,15 @@ func GetItem(svc *dynamodb.DynamoDB, tableName, key string) (Item, bool) {
 		panic(fmt.Sprintf("Failed to unmarshal Record, %v", err))
 	}
 
-	fmt.Println("Found item:")
-	fmt.Println("Key:  ", item.Key)
-	fmt.Println("Value: ", item.Value)
+	log.Println("Item found")
 
-	return item, true
+	retValue := make([][]byte, 0)
+
+	for i := 0; i < len(item.Value); i++ {
+		retValue = append(retValue, []byte(item.Value[i]))
+	}
+
+	return retValue
 }
 
 func DeleteItem(svc *dynamodb.DynamoDB, tableName, key string) {
@@ -172,10 +108,75 @@ func DeleteItem(svc *dynamodb.DynamoDB, tableName, key string) {
 	fmt.Println("Deleted '" + key + " from table " + tableName)
 }
 
-func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues []string) {
-	item, ret := GetItem(svc, tableName, key)
-	if ret {
-		item.Value = append(item.Value, newValues...)
-		PutItem(svc, tableName, key, item.Value)
+func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues [][]byte) {
+	var dynamoValues []*dynamodb.AttributeValue
+	length := len(newValues)
+
+	if length == 0 {
+		dynamoValues = []*dynamodb.AttributeValue{}
 	}
+
+	for i := 0; i < length; i++ {
+		av := &dynamodb.AttributeValue{
+			S: aws.String(string(newValues[i])),
+		}
+		dynamoValues = append(dynamoValues, av)
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"Key": {
+				S: aws.String(key),
+			},
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":newVal": {
+				L: dynamoValues,
+			},
+		},
+		ReturnValues:     aws.String("ALL_NEW"),
+		UpdateExpression: aws.String("SET ValueList = list_append(ValueList, :newVal)"),
+		TableName:        aws.String(tableName),
+	}
+
+	_, err := svc.UpdateItem(input)
+	if err != nil {
+		log.Fatalf("Got error calling UpdateItem: %s", err)
+	}
+
+	log.Println("Appended completed")
 }
+
+/*func main() {
+
+	client := SetupClient(utils.AwsRegion)
+	key := "key"
+	value := make([][]byte, 0)
+	value = append(value, []byte("str1"))
+	value = append(value, []byte("bho"))
+	value = append(value, []byte("str2"))
+
+	PutItem(client, utils.DynamoTable, key, value)
+
+	retValue := GetItem(client, utils.DynamoTable, key)
+	length := len(retValue)
+	for i:=0; i< length; i++{
+		fmt.Println(string(retValue[i]))
+	}
+
+	value1 := make([][]byte, 0)
+	value1 = append(value1, []byte("at"))
+	value1 = append(value1, []byte("the"))
+	value1 = append(value1, []byte("end"))
+
+	AppendValue(client, utils.DynamoTable, key, value1)
+
+	retValue = GetItem(client, utils.DynamoTable, key)
+	length = len(retValue)
+	for i:=0; i< length; i++{
+		fmt.Println(string(retValue[i]))
+	}
+
+
+
+}*/
