@@ -109,7 +109,6 @@ func getAliveReplica(ctx context.Context, ip string) (pb.OperationsClient, *grpc
 	c, conn, err := ContactServer(ip)
 	if err != nil {
 		replicas, err2 := kDht.GetCluster(ctx, ip)
-		log.Println("DHT", replicas, err2)
 		if err2 != nil {
 			return nil, nil, err2
 		}
@@ -135,7 +134,6 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	key := string(in.GetKey())
 
 	value, onTheCloud, err := kDht.GetValue(ctx, key)
-	log.Println("Get:", value, onTheCloud, err)
 	if onTheCloud {
 		item, err := cloud.GetItem(dynamo, utils.DynamoTable, string(in.GetKey()))
 		if err != nil {
@@ -155,7 +153,6 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 
 		// Try node list
 		c, _, err := getAliveReplica(ctx, value)
-		log.Println(c, err)
 		if err != nil {
 			return &pb.Value{Value: [][]byte{}}, err
 		}
@@ -186,7 +183,6 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	var offload bool
 	//Check where is stored
 	value, onTheCloud, err := kDht.GetValue(ctxDht, key)
-	log.Println("Put:", value, onTheCloud, err)
 	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		if utils.GetSize(in.GetValue()) > utils.Threshold {
 			err = cloud.PutItem(dynamo, utils.DynamoTable, string(in.GetKey()), in.GetValue())
@@ -308,7 +304,6 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	var offload bool
 	//Check where is stored
 	value, onTheCloud, err := kDht.GetValue(ctx, key)
-	log.Println("Append:", value, onTheCloud, err)
 	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		if utils.GetSize(in.GetValue()) > utils.Threshold {
 			err = cloud.PutItem(dynamo, utils.DynamoTable, string(in.GetKey()), in.GetValue())
@@ -928,7 +923,7 @@ func main() {
 				}
 				return nil
 			})
-			log.Println("____________________End printing db____________________")
+			log.Println("_____________________End printing db_____________________")
 			if err != nil {
 				log.Println("There is a problem")
 			}
