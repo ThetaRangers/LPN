@@ -14,6 +14,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/dgraph-io/badger"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/routing"
@@ -29,7 +30,7 @@ import (
 const (
 	port       = ":50051"
 	mask       = "172.17.0.0/24"
-	regService = 1
+	regService = 0
 )
 
 var retryPolicy = `{
@@ -67,9 +68,11 @@ var address string
 var channel chan migration.KeyOp
 var raftN *replication.RaftStruct
 var dhtRoutine replication.DhtRoutine
-var kdht *dht.KDht
+var kDht *dht.KDht
 var config = Config{}
 var h host.Host
+
+var dynamo *dynamodb.DynamoDB
 
 var keyDb = metadata.GetKeyDb()
 
@@ -105,7 +108,7 @@ func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 func getAliveReplica(ctx context.Context, ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	c, conn, err := ContactServer(ip)
 	if err != nil {
-		replicas, err2 := kdht.GetCluster(ctx, ip)
+		replicas, err2 := kDht.GetCluster(ctx, ip)
 		log.Println("DHT", replicas, err2)
 		if err2 != nil {
 			return nil, nil, err2
@@ -131,9 +134,15 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	log.Printf("Received: Get(%v)", in.GetKey())
 	key := string(in.GetKey())
 
-	value, onTheCloud, err := kdht.GetValue(ctx, key)
+	value, onTheCloud, err := kDht.GetValue(ctx, key)
+	log.Println("Get:", value, onTheCloud, err)
 	if onTheCloud {
-		//TODO GET FROM CLOUD
+		item, err := cloud.GetItem(dynamo, utils.DynamoTable, string(in.GetKey()))
+		if err != nil {
+			return &pb.Value{Value: [][]byte{}}, err
+		} else {
+			return &pb.Value{Value: item}, nil
+		}
 	} else if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		//Not found in the dht or deleted
 		return &pb.Value{Value: [][]byte{}}, nil
@@ -142,7 +151,6 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 	}
 
 	if !cluster.Contains(value) {
-		log.Println("QUI")
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.External}
 
 		// Try node list
@@ -152,18 +160,11 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 			return &pb.Value{Value: [][]byte{}}, err
 		}
 
-		result, err := c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
-		if err != nil {
-			return &pb.Value{Value: [][]byte{}}, err
-		} else {
-			return result, nil
-		}
+		return c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
 
 	} else {
-		value, _ := database.Get(in.GetKey())
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.Master}
-
-		return &pb.Value{Value: value}, nil
+		return s.GetInternal(ctx, in)
 	}
 }
 
@@ -181,13 +182,18 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	ctxDht := context.Background()
 	key := string(in.GetKey())
 
+	var val string
 	var offload bool
 	//Check where is stored
-	value, _, err := kdht.GetValue(ctxDht, key)
+	value, onTheCloud, err := kDht.GetValue(ctxDht, key)
+	log.Println("Put:", value, onTheCloud, err)
 	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		if utils.GetSize(in.GetValue()) > utils.Threshold {
-			// TODO OFFLOAD TO THE CLOUD
-			address = "onTheCloud"
+			err = cloud.PutItem(dynamo, utils.DynamoTable, string(in.GetKey()), in.GetValue())
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+			val = "dynamo"
 			offload = true
 		} else {
 			log.Println("Not found responsible node, putting in local db....")
@@ -208,10 +214,11 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 				return &pb.Ack{Msg: "Err"}, err
 			}
 
+			val = address
 			offload = false
 		}
 
-		err := kdht.PutValue(ctxDht, string(in.GetKey()), address, offload)
+		err := kDht.PutValue(ctxDht, string(in.GetKey()), val, offload)
 		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
 		}
@@ -219,42 +226,44 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		return &pb.Ack{Msg: "Ok"}, nil
 	} else if err != nil {
 		return &pb.Ack{Msg: "Err"}, err
-	}
-
-	//Found in the dht
-	// If not in Raft cluster
-	if !cluster.Contains(value) {
-		//Connect to remote ip
-		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
-		c, _, err := getAliveReplica(ctx, value)
-		if err != nil {
-			return &pb.Ack{Msg: "Err"}, err
-		}
-
-		_, err = c.PutInternal(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
-		if err != nil {
-			return &pb.Ack{Msg: "Err"}, err
-		}
-
-		return &pb.Ack{Msg: "Ok"}, nil
 	} else {
-		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
-
-		leader := raftN.GetLeader()
-		if leader == ip.String() {
-			err = raftN.Put(in.GetKey(), in.GetValue())
+		//Found in the dht
+		if onTheCloud {
+			if utils.GetSize(in.GetValue()) > utils.Threshold {
+				err = cloud.PutItem(dynamo, utils.DynamoTable, string(in.GetKey()), in.GetValue())
+				if err != nil {
+					return &pb.Ack{Msg: "Err"}, err
+				}
+				return &pb.Ack{Msg: "Ok"}, nil
+			} else {
+				err = cloud.DeleteItem(dynamo, utils.DynamoTable, string(in.GetKey()))
+				if err != nil {
+					return &pb.Ack{Msg: "Err"}, err
+				}
+				err := kDht.PutValue(ctxDht, string(in.GetKey()), ip.String(), false)
+				if err != nil {
+					return &pb.Ack{Msg: "Err"}, err
+				}
+				keyDb.PutKey(string(in.GetKey()))
+				return s.PutInternal(ctx, in)
+			}
 		} else {
-			c, _, _ := ContactServer(leader)
+			// If not in Raft cluster
+			if !cluster.Contains(value) {
+				//Connect to remote ip
+				channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
+				c, _, err := getAliveReplica(ctx, value)
+				if err != nil {
+					return &pb.Ack{Msg: "Err"}, err
+				}
 
-			_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
-		}
-
-		if err != nil {
-			return &pb.Ack{Msg: "Err"}, err
+				return c.PutInternal(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+			} else {
+				channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
+				return s.PutInternal(ctx, in)
+			}
 		}
 	}
-
-	return &pb.Ack{Msg: "Ok"}, nil
 }
 
 func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
@@ -262,31 +271,51 @@ func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, err
 
 	leader := raftN.GetLeader()
 	if leader == ip.String() {
-		err = raftN.Put(in.GetKey(), in.GetValue())
+		if utils.GetSize(in.GetValue()) > utils.Threshold {
+			err = cloud.PutItem(dynamo, utils.DynamoTable, string(in.GetKey()), in.GetValue())
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+			err := kDht.PutValue(context.Background(), string(in.GetKey()), "dynamo", true)
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+			err = raftN.Del(in.GetKey())
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+			return &pb.Ack{Msg: "Ok"}, nil
+		} else {
+			err = raftN.Put(in.GetKey(), in.GetValue())
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+			return &pb.Ack{Msg: "Ok"}, nil
+		}
 	} else {
 		c, _, _ := ContactServer(leader)
 
-		_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		return c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
 	}
-	if err != nil {
-		return &pb.Ack{Msg: "Err"}, err
-	}
-
-	return &pb.Ack{Msg: "Ok"}, nil
 }
 
-// Append i i no green pass
+// Append rpc function called to concatenate a value to an already present one. If the value is not already in the
+// system, it is simply added
 func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	key := string(in.GetKey())
 
-	//Check where is stored
+	var val string
 	var offload bool
 	//Check where is stored
-	value, _, err := kdht.GetValue(ctx, key)
+	value, onTheCloud, err := kDht.GetValue(ctx, key)
+	log.Println("Append:", value, onTheCloud, err)
 	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		if utils.GetSize(in.GetValue()) > utils.Threshold {
-			// TODO OFFLOAD TO THE CLOUD
-			address = "onTheCloud"
+			err = cloud.PutItem(dynamo, utils.DynamoTable, string(in.GetKey()), in.GetValue())
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+			val = "dynamo"
 			offload = true
 		} else {
 			log.Println("Not found responsible node, putting in local db....")
@@ -307,10 +336,11 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 				return &pb.Ack{Msg: "Err"}, err
 			}
 
+			val = address
 			offload = false
 		}
 
-		err := kdht.PutValue(ctx, string(in.GetKey()), address, offload)
+		err := kDht.PutValue(ctx, string(in.GetKey()), val, offload)
 		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
 		}
@@ -318,75 +348,69 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 		return &pb.Ack{Msg: "Ok"}, nil
 	} else if err != nil {
 		return nil, err
-	}
-
-	//Found in the dht
-	if !cluster.Contains(value) {
-		//Connect to remote ip
-		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
-
-		c, _, err := getAliveReplica(ctx, value)
-		if err != nil {
-			return &pb.Ack{Msg: "Err"}, err
-		}
-
-		_, err = c.AppendInternal(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
-		if err != nil {
-			return &pb.Ack{Msg: "Connection error"}, nil
-		}
 	} else {
-		channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
-
-		leader := raftN.GetLeader()
-		if leader == ip.String() {
-			toOffload, err := raftN.Append(in.GetKey(), in.GetValue())
+		//Found in the dht
+		if onTheCloud {
+			err = cloud.AppendValue(dynamo, utils.DynamoTable, string(in.GetKey()), in.GetValue())
 			if err != nil {
 				return &pb.Ack{Msg: "Err"}, err
 			}
-			if toOffload {
-				// TODO offload
-			}
+			return &pb.Ack{Msg: "Ok"}, nil
 		} else {
-			c, _, _ := ContactServer(leader)
+			if !cluster.Contains(value) {
+				//Connect to remote ip
+				channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.External}
 
-			_, err = c.AppendInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+				c, _, err := getAliveReplica(ctx, value)
+				if err != nil {
+					return &pb.Ack{Msg: "Err"}, err
+				}
+
+				return c.AppendInternal(ctx, in)
+			} else {
+				channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
+				return s.AppendInternal(ctx, in)
+			}
 		}
 	}
-
-	return &pb.Ack{Msg: "Ok"}, nil
 }
 
 func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
-	var err error
-
 	leader := raftN.GetLeader()
 	if leader == ip.String() {
-		toOffload, err := raftN.Append(in.GetKey(), in.GetValue())
+		value, toOffload, err := raftN.Append(in.GetKey(), in.GetValue())
 		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
 		}
 		if toOffload {
-			// TODO offload
+			err = cloud.PutItem(dynamo, utils.DynamoTable, string(in.GetKey()), value)
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+			err := kDht.PutValue(context.Background(), string(in.GetKey()), "dynamo", true)
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
 		}
+		return &pb.Ack{Msg: "Ok"}, nil
 	} else {
 		c, _, _ := ContactServer(leader)
 
-		_, err = c.AppendInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		return c.AppendInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
 	}
-	if err != nil {
-		return &pb.Ack{Msg: "Err"}, err
-	}
-
-	return &pb.Ack{Msg: "Ok"}, nil
 }
 
 // Del function to delete
 func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 	key := string(in.GetKey())
 	// Get responsible from dht
-	value, onTheCloud, err := kdht.GetValue(ctx, key)
+	value, onTheCloud, err := kDht.GetValue(ctx, key)
 	if onTheCloud {
-		// TODO DELETE KEY FROM CLOUD
+		err = cloud.DeleteItem(dynamo, utils.DynamoTable, string(in.GetKey()))
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
+		}
+		return &pb.Ack{Msg: "Ok"}, nil
 	} else if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		// Not found in the dht or already deleted
 		return &pb.Ack{Msg: "Ok"}, nil
@@ -419,7 +443,7 @@ func (s *server) DelInternal(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		return &pb.Ack{Msg: "Err"}, err
 	}
 
-	err = kdht.PutValue(ctx, string(in.GetKey()), "", false)
+	err = kDht.PutValue(ctx, string(in.GetKey()), "", false)
 	if err != nil {
 		return &pb.Ack{Msg: "Err"}, err
 	}
@@ -523,11 +547,11 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.JoinResponse
 
 		}
 
-		kdht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
+		kDht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
 		if err != nil {
 			log.Fatal(err)
 		}
-		dhtRoutine.SetDht(kdht)
+		dhtRoutine.SetDht(kDht)
 	}
 
 	return &pb.JoinResponse{Keys: keys, Values: values}, nil
@@ -604,7 +628,7 @@ func houseKeeper(ctx context.Context) {
 		migrationKeys := migration.EvaluateMigration()
 
 		for _, k := range migrationKeys {
-			value, fromCloud, err := kdht.GetValue(ctx, k)
+			value, fromCloud, err := kDht.GetValue(ctx, k)
 			if err != nil {
 				continue
 			}
@@ -635,7 +659,7 @@ func houseKeeper(ctx context.Context) {
 			}
 
 			// Modify dht
-			err = kdht.PutValue(ctx, k, ip.String(), false)
+			err = kDht.PutValue(ctx, k, ip.String(), false)
 			if err != nil {
 				// TODO ???
 			}
@@ -671,7 +695,28 @@ func initializeHost(ctx context.Context) string {
 }
 
 func main() {
-	log.Println("\n          _____            _____                    _____          \n         /\\    \\          /\\    \\                  /\\    \\         \n        /::\\____\\        /::\\    \\                /::\\____\\        \n       /:::/    /       /::::\\    \\              /::::|   |        \n      /:::/    /       /::::::\\    \\            /:::::|   |        \n     /:::/    /       /:::/\\:::\\    \\          /::::::|   |        \n    /:::/    /       /:::/__\\:::\\    \\        /:::/|::|   |        \n   /:::/    /       /::::\\   \\:::\\    \\      /:::/ |::|   |        \n  /:::/    /       /::::::\\   \\:::\\    \\    /:::/  |::|   | _____  \n /:::/    /       /:::/\\:::\\   \\:::\\____\\  /:::/   |::|   |/\\    \\ \n/:::/____/       /:::/  \\:::\\   \\:::|    |/:: /    |::|   /::\\____\\\n\\:::\\    \\       \\::/    \\:::\\  /:::|____|\\::/    /|::|  /:::/    /\n \\:::\\    \\       \\/_____/\\:::\\/:::/    /  \\/____/ |::| /:::/    / \n  \\:::\\    \\               \\::::::/    /           |::|/:::/    /  \n   \\:::\\    \\               \\::::/    /            |::::::/    /   \n    \\:::\\    \\               \\::/____/             |:::::/    /    \n     \\:::\\    \\               ~~                   |::::/    /     \n      \\:::\\    \\                                   /:::/    /      \n       \\:::\\____\\                                 /:::/    /       \n        \\::/    /                                 \\::/    /        \n         \\/____/                                   \\/____/         \n                                                                   ")
+	log.Println("\n          _____            _____                    _____          \n" +
+		"         /\\    \\          /\\    \\                  /\\    \\         \n" +
+		"        /::\\____\\        /::\\    \\                /::\\____\\        \n" +
+		"       /:::/    /       /::::\\    \\              /::::|   |        \n" +
+		"      /:::/    /       /::::::\\    \\            /:::::|   |        \n" +
+		"     /:::/    /       /:::/\\:::\\    \\          /::::::|   |        \n" +
+		"    /:::/    /       /:::/__\\:::\\    \\        /:::/|::|   |        \n" +
+		"   /:::/    /       /::::\\   \\:::\\    \\      /:::/ |::|   |        \n" +
+		"  /:::/    /       /::::::\\   \\:::\\    \\    /:::/  |::|   | _____  \n" +
+		" /:::/    /       /:::/\\:::\\   \\:::\\____\\  /:::/   |::|   |/\\    \\ \n" +
+		"/:::/____/       /:::/  \\:::\\   \\:::|    |/:: /    |::|   /::\\____\\\n" +
+		"\\:::\\    \\       \\::/    \\:::\\  /:::|____|\\::/    /|::|  /:::/    /\n" +
+		" \\:::\\    \\       \\/_____/\\:::\\/:::/    /  \\/____/ |::| /:::/    / \n" +
+		"  \\:::\\    \\               \\::::::/    /           |::|/:::/    /  \n" +
+		"   \\:::\\    \\               \\::::/    /            |::::::/    /   \n" +
+		"    \\:::\\    \\               \\::/____/             |:::::/    /    \n" +
+		"     \\:::\\    \\               ~~                   |::::/    /     \n" +
+		"      \\:::\\    \\                                   /:::/    /      \n" +
+		"       \\:::\\____\\                                 /:::/    /       \n" +
+		"        \\::/    /                                 \\::/    /        \n" +
+		"         \\/____/                                   \\/____/         \n" +
+		"                                                                   ")
 	//Get ip address
 	iFaces, err := net.Interfaces()
 	// handle err
@@ -744,6 +789,10 @@ func main() {
 	if regService == 0 {
 		// TODO maybe add support for ip6
 		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.N, utils.AwsRegion)
+		dynamo, err = cloud.SetupClient(utils.AwsRegion)
+		if err != nil {
+			log.Fatal(err)
+		}
 	} else if regService == 1 {
 		registerCluster = cloud.RegisterStub(ip.String(), ipStr, utils.N, utils.AwsRegion)
 	}
@@ -761,11 +810,11 @@ func main() {
 			}
 		}
 
-		kdht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
+		kDht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
 		if err != nil {
 			log.Fatal(err)
 		}
-		dhtRoutine.SetDht(kdht)
+		dhtRoutine.SetDht(kDht)
 	}
 
 	ipList := registerCluster.IpList

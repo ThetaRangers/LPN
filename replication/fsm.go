@@ -25,6 +25,7 @@ type ApplyResponse struct {
 type AppendResponse struct {
 	Error error
 	ToBeOffloaded bool
+	Value [][]byte
 }
 
 var keyDb = metadata.GetKeyDb()
@@ -79,11 +80,13 @@ func (f FSM) Apply(log *raft.Log) interface{} {
 					return &AppendResponse{
 						Error: err,
 						ToBeOffloaded: true,
+						Value: val,
 					}
 				} else {
 					return &AppendResponse{
 						Error: nil,
 						ToBeOffloaded: false,
+						Value: val,
 					}
 				}
 			} else {

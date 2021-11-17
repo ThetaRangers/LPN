@@ -65,7 +65,7 @@ func (r RaftStruct) Del(key []byte) error {
 	return nil
 }
 
-func (r RaftStruct) Append(key []byte, value [][]byte) (bool, error) {
+func (r RaftStruct) Append(key []byte, value [][]byte) ([][]byte, bool, error) {
 	payload := CommandPayload{
 		Operation: "APPEND",
 		Key:       key,
@@ -74,26 +74,25 @@ func (r RaftStruct) Append(key []byte, value [][]byte) (bool, error) {
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return false, err
+		return [][]byte{}, false, err
 	}
 
 	applyFuture := r.RaftNode.Apply(data, applyTimeout)
 	if err := applyFuture.Error(); err != nil {
-		return false, err
+		return [][]byte{}, false, err
 	}
 
 	response, ok := applyFuture.Response().(*AppendResponse)
 	if !ok {
-		return false, errors.New("bad response")
+		return [][]byte{}, false, errors.New("bad response")
 	} else {
 		if response.Error != nil {
-			return false, response.Error
+			return [][]byte{}, false, response.Error
 		} else {
 			if response.ToBeOffloaded {
-				// TODO offload payload.value and update DHT
-				return true, nil
+				return response.Value, true, nil
 			}
-			return false, nil
+			return response.Value, false, nil
 		}
 	}
 

@@ -19,6 +19,7 @@ func completer(d prompt.Document) []prompt.Suggest {
 		{Text: "disconnect", Description: "Disconnect from the node"},
 		{Text: "quit", Description: "Quit from the cli"},
 		{Text: "lnode", Description: "List nodes from local"},
+		{Text: "nodes", Description: "List nodes from local"},
 		{Text: "lclosest", Description: "Get closest node from local"},
 	}
 	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
@@ -32,7 +33,12 @@ var grpcConn *grpc.ClientConn
 func main() {
 	var err error
 
-	fmt.Println("__         ______   __   __        ______     __         __     ______     __   __     ______  \n/\\ \\       /\\  == \\ /\\ \"-.\\ \\      /\\  ___\\   /\\ \\       /\\ \\   /\\  ___\\   /\\ \"-.\\ \\   /\\__  _\\ \n\\ \\ \\____  \\ \\  _-/ \\ \\ \\-.  \\     \\ \\ \\____  \\ \\ \\____  \\ \\ \\  \\ \\  __\\   \\ \\ \\-.  \\  \\/_/\\ \\/ \n \\ \\_____\\  \\ \\_\\    \\ \\_\\\\\"\\_\\     \\ \\_____\\  \\ \\_____\\  \\ \\_\\  \\ \\_____\\  \\ \\_\\\\\"\\_\\    \\ \\_\\ \n  \\/_____/   \\/_/     \\/_/ \\/_/      \\/_____/   \\/_____/   \\/_/   \\/_____/   \\/_/ \\/_/     \\/_/ \n                                                                                                ")
+	fmt.Println(" __         ______   __   __        ______     __         __     ______     __   __     ______  \n" +
+		"/\\ \\       /\\  == \\ /\\ \"-.\\ \\      /\\  ___\\   /\\ \\       /\\ \\   /\\  ___\\   /\\ \"-.\\ \\   /\\__  _\\ \n" +
+		"\\ \\ \\____  \\ \\  _-/ \\ \\ \\-.  \\     \\ \\ \\____  \\ \\ \\____  \\ \\ \\  \\ \\  __\\   \\ \\ \\-.  \\  \\/_/\\ \\/ \n" +
+		" \\ \\_____\\  \\ \\_\\    \\ \\_\\\\\"\\_\\     \\ \\_____\\  \\ \\_____\\  \\ \\_\\  \\ \\_____\\  \\ \\_\\\\\"\\_\\    \\ \\_\\ \n" +
+		"  \\/_____/   \\/_/     \\/_/ \\/_/      \\/_____/   \\/_____/   \\/_/   \\/_____/   \\/_/ \\/_/     \\/_/ \n" +
+		"                                                                                                ")
 
 	for {
 
@@ -134,6 +140,13 @@ func main() {
 				} else {
 					fmt.Println("Nodes: ", allNodes)
 				}
+			} else {
+				fmt.Println("Invalid number of parameters: lnodes <address>")
+			}
+		case "nodes":
+			if len(parts) == 2 {
+				allNodes := client.GetAllNodes(parts[1])
+				fmt.Println("Nodes: ", allNodes)
 			} else {
 				fmt.Println("Invalid number of parameters: lnodes <address>")
 			}

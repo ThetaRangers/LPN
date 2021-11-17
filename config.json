@@ -6,5 +6,5 @@
 	"MigrationWindowMinutes": 10,
 	"MigrationThreshold": 10,
 	"Subnet": "172.17.0.0/24",
-	"TestingServer": "10.220.112.221"
+	"TestingServer": "192.168.43.123"
 }

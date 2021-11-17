@@ -51,7 +51,7 @@ func (k *KDht) GetValue(ctx context.Context, key string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	} else if string(value[0]) == offloadChar {
-		return "", true, nil
+		return string(value[1:]), true, nil
 	} else {
 		return string(value[1:]), false, nil
 	}

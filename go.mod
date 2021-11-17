@@ -1,7 +1,7 @@
 module SDCC
 
 require (
-	github.com/aws/aws-sdk-go v1.41.0
+	github.com/aws/aws-sdk-go v1.42.6
 	github.com/c-bata/go-prompt v0.2.6
 	github.com/dgraph-io/badger v1.6.2
 	github.com/go-redis/redis/v8 v8.11.4

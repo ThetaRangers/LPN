@@ -15,11 +15,6 @@ import (
 	"time"
 )
 
-const (
-	//TODO set as terraform output result
-	url = ""
-)
-
 type Connection struct {
 	c op.OperationsClient
 }
@@ -28,7 +23,7 @@ type IpListStruct struct {
 	IpList []string `json:"ipList"`
 }
 
-func GetAllNodes() []string {
+func GetAllNodes(url string) []string {
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	response, err := http.Get(url)
 	if err != nil {

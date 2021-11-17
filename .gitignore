@@ -47,3 +47,6 @@ terraform/db_credentials.tfvars
 
 # Raft data
 raft-data/
+
+# Metadata db
+key.db
