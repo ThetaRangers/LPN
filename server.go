@@ -481,6 +481,11 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.JoinResponse
 		myKeys := keyDb.GetKeys()
 		cluster.Invalidate()
 
+		err = database.DeleteExcept(myKeys)
+		if err != nil {
+			log.Fatal("Error while transferring", err)
+		}
+
 		for _, k := range myKeys {
 			keys = append(keys, k)
 
