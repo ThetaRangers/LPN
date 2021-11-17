@@ -22,15 +22,20 @@ type ApplyResponse struct {
 	Error error
 }
 
+type AppendResponse struct {
+	Error error
+	ToBeOffloaded bool
+}
+
 var keyDb = metadata.GetKeyDb()
 
 // snapshotNoop handle noop snapshot
 type snapshotNoop struct{}
 
-// Persist persist to disk. Return nil on success, otherwise return error.
+// Persist persists to disk. Return nil on success, otherwise return error.
 func (s snapshotNoop) Persist(_ raft.SnapshotSink) error { return nil }
 
-// Release release the lock after persist snapshot.
+// Release releases the lock after persist snapshot.
 // Release is invoked when we are finished with the snapshot.
 func (s snapshotNoop) Release() {}
 
@@ -68,12 +73,23 @@ func (f FSM) Apply(log *raft.Log) interface{} {
 			}
 		case "APPEND":
 			val, err := (*f.db).Append(payload.Key, payload.Value)
-			if utils.GetSize(val) > 300 {
-				// TODO REJECT MODERNITY EMBRACE MONKEY
-			}
-
-			return &ApplyResponse{
-				Error: err,
+			if err == nil {
+				if utils.GetSize(val) > utils.Threshold {
+					err = (*f.db).Del(payload.Key)
+					return &AppendResponse{
+						Error: err,
+						ToBeOffloaded: true,
+					}
+				} else {
+					return &AppendResponse{
+						Error: nil,
+						ToBeOffloaded: false,
+					}
+				}
+			} else {
+				return &AppendResponse{
+					Error: err,
+				}
 			}
 		case "DELETE":
 			keyDb.DelKey(string(payload.Key))

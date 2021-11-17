@@ -30,7 +30,6 @@ const (
 	port       = ":50051"
 	mask       = "172.17.0.0/24"
 	regService = 1
-	threshold  = 300
 )
 
 var retryPolicy = `{
@@ -186,7 +185,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	//Check where is stored
 	value, _, err := kdht.GetValue(ctxDht, key)
 	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
-		if utils.GetSize(in.GetValue()) > threshold {
+		if utils.GetSize(in.GetValue()) > utils.Threshold {
 			// TODO OFFLOAD TO THE CLOUD
 			address = "onTheCloud"
 			offload = true
@@ -285,7 +284,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	//Check where is stored
 	value, _, err := kdht.GetValue(ctx, key)
 	if err == routing.ErrNotFound || err == nil && len(value) == 0 {
-		if utils.GetSize(in.GetValue()) > threshold {
+		if utils.GetSize(in.GetValue()) > utils.Threshold {
 			// TODO OFFLOAD TO THE CLOUD
 			address = "onTheCloud"
 			offload = true
@@ -340,7 +339,13 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 
 		leader := raftN.GetLeader()
 		if leader == ip.String() {
-			err = raftN.Append(in.GetKey(), in.GetValue())
+			toOffload, err := raftN.Append(in.GetKey(), in.GetValue())
+			if err != nil {
+				return &pb.Ack{Msg: "Err"}, err
+			}
+			if toOffload {
+				// TODO offload
+			}
 		} else {
 			c, _, _ := ContactServer(leader)
 
@@ -356,7 +361,13 @@ func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, 
 
 	leader := raftN.GetLeader()
 	if leader == ip.String() {
-		err = raftN.Append(in.GetKey(), in.GetValue())
+		toOffload, err := raftN.Append(in.GetKey(), in.GetValue())
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
+		}
+		if toOffload {
+			// TODO offload
+		}
 	} else {
 		c, _, _ := ContactServer(leader)
 

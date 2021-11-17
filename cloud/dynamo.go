@@ -1,12 +1,10 @@
 package cloud
 
 import (
-	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"log"
 )
 
 type Item struct {
@@ -14,21 +12,25 @@ type Item struct {
 	Value []string `dynamodbav:"ValueList,omitempty"`
 }
 
-func SetupClient(region string) *dynamodb.DynamoDB {
+func SetupClient(region string) (*dynamodb.DynamoDB, error) {
 	//Region taken from config
 	//start session
-	sess, _ := session.NewSession(&aws.Config{
+	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(region)},
 	)
+
+	if err != nil {
+		return nil, err
+	}
 
 	//create dynamo service client
 	svc := dynamodb.New(sess)
 
-	return svc
+	return svc, nil
 }
 
 //PutItem Override value for existing key
-func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value [][]byte) {
+func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value [][]byte) error {
 	val := make([]string, 0)
 	for i := 0; i < len(value); i++ {
 		val = append(val, string(value[i]))
@@ -37,7 +39,7 @@ func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value [][]byte) {
 	newItem := Item{key, val}
 	av, err := dynamodbattribute.MarshalMap(newItem)
 	if err != nil {
-		log.Fatalf("Got error marshalling new movie item: %s", err)
+		return err
 	}
 
 	input := &dynamodb.PutItemInput{
@@ -47,14 +49,13 @@ func PutItem(svc *dynamodb.DynamoDB, tableName, key string, value [][]byte) {
 
 	_, err = svc.PutItem(input)
 	if err != nil {
-		log.Fatalf("Got error calling PutItem: %s", err)
+		return err
 	}
 
-	log.Println("Successfully added " + newItem.Key)
-
+	return nil
 }
 
-func GetItem(svc *dynamodb.DynamoDB, tableName, key string) [][]byte {
+func GetItem(svc *dynamodb.DynamoDB, tableName, key string) ([][]byte, error) {
 	result, err := svc.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -64,22 +65,19 @@ func GetItem(svc *dynamodb.DynamoDB, tableName, key string) [][]byte {
 		},
 	})
 	if err != nil {
-		log.Fatalf("Got error calling GetItem: %s", err)
+		return [][]byte{}, err
 	}
 
 	item := Item{}
 
 	if result.Item == nil {
-		log.Println("Could not find '" + key + "'")
-		return [][]byte{}
+		return [][]byte{}, nil
 	}
 
 	err = dynamodbattribute.UnmarshalMap(result.Item, &item)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to unmarshal Record, %v", err))
+		return [][]byte{}, err
 	}
-
-	log.Println("Item found")
 
 	retValue := make([][]byte, 0)
 
@@ -87,10 +85,10 @@ func GetItem(svc *dynamodb.DynamoDB, tableName, key string) [][]byte {
 		retValue = append(retValue, []byte(item.Value[i]))
 	}
 
-	return retValue
+	return retValue, nil
 }
 
-func DeleteItem(svc *dynamodb.DynamoDB, tableName, key string) {
+func DeleteItem(svc *dynamodb.DynamoDB, tableName, key string) error {
 	input := &dynamodb.DeleteItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"Key": {
@@ -102,20 +100,20 @@ func DeleteItem(svc *dynamodb.DynamoDB, tableName, key string) {
 
 	_, err := svc.DeleteItem(input)
 	if err != nil {
-		log.Fatalf("Got error calling DeleteItem: %s", err)
+		return err
 	}
 
-	log.Println(key + " deleted ")
+	return nil
 }
 
-func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues [][]byte) {
+func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues [][]byte) error {
 	var dynamoValues []*dynamodb.AttributeValue
 	length := len(newValues)
 
 	if length == 0 {
 		dynamoValues = []*dynamodb.AttributeValue{}
 		//avoid dynamo update
-		return
+		return nil
 	}
 
 	for i := 0; i < length; i++ {
@@ -143,8 +141,7 @@ func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues [][]by
 
 	_, err := svc.UpdateItem(input)
 	if err != nil {
-		log.Fatalf("Got error calling UpdateItem: %s", err)
+		return err
 	}
-
-	log.Println("Appended completed")
+	return nil
 }

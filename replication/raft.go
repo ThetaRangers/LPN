@@ -4,6 +4,7 @@ import (
 	"SDCC/database"
 	"SDCC/utils"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/raft-boltdb"
@@ -64,19 +65,38 @@ func (r RaftStruct) Del(key []byte) error {
 	return nil
 }
 
-func (r RaftStruct) Append(key []byte, value [][]byte) error {
+func (r RaftStruct) Append(key []byte, value [][]byte) (bool, error) {
 	payload := CommandPayload{
 		Operation: "APPEND",
 		Key:       key,
 		Value:     value,
 	}
 
-	err := r.apply(payload)
+	data, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return nil
+	applyFuture := r.RaftNode.Apply(data, applyTimeout)
+	if err := applyFuture.Error(); err != nil {
+		return false, err
+	}
+
+	response, ok := applyFuture.Response().(*AppendResponse)
+	if !ok {
+		return false, errors.New("bad response")
+	} else {
+		if response.Error != nil {
+			return false, response.Error
+		} else {
+			if response.ToBeOffloaded {
+				// TODO offload payload.value and update DHT
+				return true, nil
+			}
+			return false, nil
+		}
+	}
+
 }
 
 func (r RaftStruct) Join(ip string) error {
