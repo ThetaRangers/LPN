@@ -142,6 +142,44 @@ func (r RedisDB) Migrate(key []byte) ([][]byte, error) {
 	}
 }
 
+func (r RedisDB) DeleteExcept(keys []string) error {
+	ctx := context.Background()
+
+	var keysDb []string
+
+	txnDel := func(tx *redis.Tx) error {
+		var cursor uint64
+		var err error
+
+		keysDb, _, err = tx.Scan(ctx, cursor, "*", 0).Result()
+		if err != nil {
+			return err
+		}
+
+		for _, k := range keysDb {
+			if !Contains(keys, k) {
+				tx.Del(ctx, k)
+			}
+		}
+
+		return nil
+	}
+
+	for {
+		err := r.Db.Watch(ctx, txnDel, keysDb...)
+		if err == nil {
+			// Success.
+			return nil
+		}
+		if err == redis.TxFailedErr {
+			// Optimistic lock lost. Retry.
+			continue
+		}
+		// Return any other error.
+		return err
+	}
+}
+
 func ConnectToRedis() *redis.Client {
 
 	rdb := redis.NewClient(&redis.Options{

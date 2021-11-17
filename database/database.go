@@ -5,4 +5,15 @@ type Database interface {
 	Put(key []byte, value [][]byte) error
 	Append(key []byte, value [][]byte) ([][]byte, error)
 	Del(key []byte) error
+	DeleteExcept([]string) error
+}
+
+func Contains(slice []string, string string) bool {
+	for _, x := range slice {
+		if x == string {
+			return true
+		}
+	}
+
+	return false
 }
