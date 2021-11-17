@@ -9,16 +9,19 @@ import (
 )
 
 const (
-	AwsRegion              = "us-east-1"
-	Replicas               = 4
-	N                      = Replicas + 1
-	Timeout                = 5 * time.Second
-	MigrationWindowMinutes = 10
-	CostRead               = 1
-	CostWrite              = 2
-	DynamoTable = "cloud_storage"
-	Threshold   = 300
+	AwsRegion = "us-east-1"
+	Replicas  = 4
+	Timeout   = 5 * time.Second
+	CostRead  = 1
+	CostWrite = 2
 )
+
+var N = Replicas + 1
+var Threshold uint64
+var DynamoTable string
+var MigrationWindowMinutes int
+var TestingServer string
+var MigrationThreshold int
 
 type Configuration struct {
 	Database  db.Database
@@ -38,8 +41,13 @@ func GetConfiguration() Configuration {
 	}(file)
 	decoder := json.NewDecoder(file)
 	parser := struct {
-		Database  string
-		AwsRegion string
+		Database               string
+		ReplicationFactor      int
+		OffloadingThreshold    uint64
+		DynamoTable            string
+		MigrationWindowMinutes int
+		TestingServer          string
+		MigrationThreshold     int
 	}{}
 	err = decoder.Decode(&parser)
 	if err != nil {
@@ -54,9 +62,13 @@ func GetConfiguration() Configuration {
 	} else {
 		database = nil // TODO handle default
 	}
-	/*else if parser.Database == "go-cache" {
-		database = db.GoCache{Cache: cache.New(cache.NoExpiration, 0)}
-	}*/
 
-	return Configuration{Database: database, awsRegion: parser.AwsRegion}
+	N = parser.ReplicationFactor
+	Threshold = parser.OffloadingThreshold
+	DynamoTable = parser.DynamoTable
+	MigrationWindowMinutes = parser.MigrationWindowMinutes
+	MigrationThreshold = parser.MigrationThreshold
+	TestingServer = parser.TestingServer
+
+	return Configuration{Database: database}
 }

@@ -2,6 +2,7 @@ package cloud
 
 import (
 	pb "SDCC/registerServer"
+	"SDCC/utils"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -68,7 +69,7 @@ func RegisterToTheNetwork(ip string, ipStr string, n int, region string) Replica
 }
 
 func RegisterStub(ip string, ipStr string, n int, region string) ReplicaSet {
-	addr := "10.220.135.250" + ":50052"
+	addr := utils.TestingServer + ":50052"
 
 	conn, err := grpc.DialContext(context.Background(), addr, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {

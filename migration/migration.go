@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"SDCC/utils"
 	"time"
 )
 
@@ -103,7 +104,7 @@ func EvaluateMigration() []string {
 		cost := GetCostExternal(k, now)
 
 		// Find max cost
-		if cost > migrationThreashold {
+		if cost > utils.MigrationThreshold {
 			migrationKeys = append(migrationKeys, k)
 		}
 	}

@@ -13,7 +13,6 @@ require (
 	github.com/libp2p/go-libp2p-kad-dht v0.13.1
 	github.com/multiformats/go-multiaddr v0.4.1
 	github.com/opentracing/opentracing-go v1.2.0
-	github.com/patrickmn/go-cache v2.1.0+incompatible
 	google.golang.org/grpc v1.41.0
 	google.golang.org/protobuf v1.27.1
 	gorm.io/driver/sqlite v1.2.3
