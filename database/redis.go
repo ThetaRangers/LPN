@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"github.com/go-redis/redis/v8"
 )
@@ -44,30 +43,25 @@ func (r RedisDB) Put(key []byte, value [][]byte) error {
 func (r RedisDB) Append(key []byte, value [][]byte) ([][]byte, error) {
 	ctx := context.Background()
 	var slice [][]byte
-	var versionNumber uint64
-	var num = make([]byte, 8)
 
 	txnPut := func(tx *redis.Tx) error {
 		val, err := tx.Get(ctx, string(key)).Bytes()
-		if err != nil {
+		if err != nil && err != redis.Nil {
 			return err
 		}
+
 		if len(val) != 0 {
 			err = json.Unmarshal(val, &slice)
 			if err != nil {
 				return err
 			}
-			versionNumber = binary.BigEndian.Uint64(slice[0])
-
-			versionNumber++
-			binary.BigEndian.PutUint64(slice[0], versionNumber)
-		} else {
-			binary.BigEndian.PutUint64(num, 0)
-			slice = append(slice, num)
 		}
 
 		slice = append(slice, value...)
 		buffer, err := json.Marshal(slice)
+		if err != nil {
+			return err
+		}
 
 		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 			return pipe.Set(ctx, string(key), buffer, 0).Err()

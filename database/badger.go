@@ -58,16 +58,13 @@ func (b BadgerDB) Put(key []byte, value [][]byte) error {
 }
 
 func (b BadgerDB) Append(key []byte, value [][]byte) ([][]byte, error) {
-	var versionNumber uint64
 	var valCopy []byte
 	var buffer []byte
 	var slice [][]byte
 
 	err := b.Db.Update(func(txn *badger.Txn) error {
 		item, err2 := txn.Get(key)
-		if err2 == badger.ErrKeyNotFound {
-			versionNumber = 0
-		} else if err2 != nil {
+		if err2 != nil && err2 != badger.ErrKeyNotFound {
 			return err2
 		}
 
