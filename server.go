@@ -757,6 +757,7 @@ func main() {
 	cluster = utils.NewClusterRoutine()
 	dhtRoutine = replication.NewDhtRoutine(ip.String(), &cluster)
 	raftN = replication.InitializeRaft(ip.String(), &utils.Database, &cluster, &dhtRoutine)
+
 	time.Sleep(3 * time.Second)
 
 	ctx := context.Background()
@@ -813,6 +814,10 @@ func main() {
 		var clusterAddresses []string
 		var keys []string
 		var values [][][]byte
+
+		for raftN.RaftNode.Stats()["state"] == "Follower" {
+
+		}
 
 		for _, node := range ipList {
 			clusterBootstrap = append(clusterBootstrap, node.IpString)
