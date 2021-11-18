@@ -403,6 +403,10 @@ func (s *server) Del(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		if err != nil {
 			return &pb.Ack{Msg: "Err"}, err
 		}
+		err = kDht.PutValue(ctx, string(in.GetKey()), "", false)
+		if err != nil {
+			return &pb.Ack{Msg: "Err"}, err
+		}
 		return &pb.Ack{Msg: "Ok"}, nil
 	} else if err == routing.ErrNotFound || err == nil && len(value) == 0 {
 		// Not found in the dht or already deleted
