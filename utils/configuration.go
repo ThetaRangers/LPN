@@ -25,6 +25,7 @@ var MigrationThreshold int
 var TestingMode bool
 var MigrationPeriodSeconds int
 var RequestTimeout int
+var DbAddress string
 
 type Configuration struct {
 	Database  db.Database
@@ -54,6 +55,7 @@ func GetConfiguration() Configuration {
 		TestingMode            bool
 		MigrationPeriodSeconds int
 		RequestTimeout         int
+		DbAddress              string
 	}{}
 	err = decoder.Decode(&parser)
 	if err != nil {
@@ -78,6 +80,7 @@ func GetConfiguration() Configuration {
 	TestingMode = parser.TestingMode
 	MigrationPeriodSeconds = parser.MigrationPeriodSeconds
 	RequestTimeout = parser.RequestTimeout
+	DbAddress = parser.DbAddress
 
 	return Configuration{Database: database}
 }

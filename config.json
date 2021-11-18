@@ -1,5 +1,6 @@
 {
 	"Database":"badger",
+	"DbAddress": "172.17.0.1:6379",
 	"RequestTimeout": 1000,
 	"ReplicationFactor": 5,
 	"OffloadingThreshold": 100,

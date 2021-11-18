@@ -15,3 +15,6 @@ docker_image:
 
 clean:
 	rm server
+
+clean_volumes:
+	docker volume rm sdcc_volumeapp1 sdcc_volumeapp2 sdcc_volumeapp3 sdcc_volumeapp4 sdcc_volumeapp5 sdcc_volumeapp6 sdcc_volumeapp7 sdcc_volumeapp8 sdcc_volumeapp9 sdcc_volumeapp10

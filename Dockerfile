@@ -12,6 +12,7 @@ COPY config.json config.json
 COPY .aws /root/.aws
 
 COPY cloud ./cloud
+COPY data ./data
 COPY database ./database
 COPY dht ./dht
 COPY metadata ./metadata

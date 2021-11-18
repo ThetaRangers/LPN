@@ -5,51 +5,61 @@ services:
     network_mode: bridge
     volumes:
       - volumeapp1:/app/data
+      - ./config.json:/app/config.json
   app2:
     image: app
     network_mode: bridge
     volumes:
       - volumeapp2:/app/data
+      - ./config.json:/app/config.json
   app3:
     image: app
     network_mode: bridge
     volumes:
       - volumeapp3:/app/data
+      - ./config.json:/app/config.json
   app4:
     image: app
     network_mode: bridge
     volumes:
       - volumeapp4:/app/data
+      - ./config.json:/app/config.json
   app5:
     image: app
     network_mode: bridge
     volumes:
       - volumeapp5:/app/data
+      - ./config.json:/app/config.json
   app6:
     image: app
     network_mode: bridge
     volumes:
       - volumeapp6:/app/data
+      - ./config.json:/app/config.json
   app7:
     image: app
     network_mode: bridge
     volumes:
       - volumeapp7:/app/data
+      - ./config.json:/app/config.json
   app8:
     image: app
     network_mode: bridge
     volumes:
       - volumeapp8:/app/data
+      - ./config.json:/app/config.json
   app9:
     image: app
     network_mode: bridge
     volumes:
       - volumeapp9:/app/data
+      - ./config.json:/app/config.json
   app10:
     image: app
     network_mode: bridge
     volumes:
       - volumeapp10:/app/data
+      - ./config.json:/app/config.json
 
 volumes:
   volumeapp1:
