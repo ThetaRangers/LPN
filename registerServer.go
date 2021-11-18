@@ -156,6 +156,10 @@ func (s *serverRegister) GetAllNodes(ctx context.Context, in *pb.EmptyMessage) (
 	return &pb.NodesIp{Addresses: tmp}, nil
 }
 
+func init() {
+	utils.GetConfiguration()
+}
+
 func main() {
 	lis, err := net.Listen("tcp", ":50052")
 	if err != nil {
