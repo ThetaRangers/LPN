@@ -6,6 +6,7 @@ type Database interface {
 	Append(key []byte, value [][]byte) ([][]byte, error)
 	Del(key []byte) error
 	DeleteExcept([]string) error
+	GetAllKeys() ([]string, []string)
 }
 
 func Contains(slice []string, string string) bool {

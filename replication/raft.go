@@ -101,7 +101,7 @@ func (r RaftStruct) Append(key []byte, value [][]byte) ([][]byte, bool, error) {
 func (r RaftStruct) Join(ip string) error {
 	payload := CommandPayload{
 		Operation: "JOIN",
-		Key: []byte(ip),
+		Key:       []byte(ip),
 	}
 
 	err := r.apply(payload)
@@ -115,7 +115,7 @@ func (r RaftStruct) Join(ip string) error {
 func (r RaftStruct) Leave(ip string) error {
 	payload := CommandPayload{
 		Operation: "LEAVE",
-		Key: []byte(ip),
+		Key:       []byte(ip),
 	}
 
 	err := r.apply(payload)
@@ -177,7 +177,7 @@ func (r RaftStruct) RemoveNode(ip string) error {
 }
 
 func ReInitializeRaft(ip string, db *database.Database, cluster *utils.ClusterRoutine, dht *DhtRoutine) *RaftStruct {
-	err := os.RemoveAll("raft-data")
+	err := os.RemoveAll("data/raft-data")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -186,12 +186,12 @@ func ReInitializeRaft(ip string, db *database.Database, cluster *utils.ClusterRo
 }
 
 func InitializeRaft(ip string, db *database.Database, cluster *utils.ClusterRoutine, dht *DhtRoutine) *RaftStruct {
-	err := os.RemoveAll("raft-data")
+	err := os.RemoveAll("data/raft-data")
 	if err != nil {
 		panic(err)
 	}
 
-	err = os.Mkdir("raft-data", 0755)
+	err = os.Mkdir("data/raft-data", 0755)
 	if err != nil {
 		log.Println(err)
 	}
@@ -207,12 +207,12 @@ func InitializeRaft(ip string, db *database.Database, cluster *utils.ClusterRout
 	tcpTimeout := timeout
 	var raftBinAddr = fmt.Sprintf("%s:%d", ip, raftPort)
 
-	ldb, err := raftboltdb.NewBoltStore("raft-data/logstore")
+	ldb, err := raftboltdb.NewBoltStore("data/raft-data/logstore")
 	if err != nil {
 		log.Println("boltdb.NewBoltStore:", err)
 	}
 
-	sdb, err := raftboltdb.NewBoltStore("raft-data/stablestore")
+	sdb, err := raftboltdb.NewBoltStore("data/raft-data/stablestore")
 	if err != nil {
 		log.Println("boltdb.NewBoltStore:", err)
 	}

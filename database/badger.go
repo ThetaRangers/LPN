@@ -146,8 +146,37 @@ func (b BadgerDB) DeleteExcept(keys []string) error {
 	return nil
 }
 
+func (b BadgerDB) GetAllKeys() ([]string, []string) {
+	var keys []string
+	var values []string
+
+	b.Db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = 10
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			k := item.Key()
+
+			keys = append(keys, string(k))
+
+			err := item.Value(func(v []byte) error {
+				values = append(values, string(v))
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	return keys, values
+}
+
 func GetBadgerDb() *badger.DB {
-	badgerDB, err := badger.Open(badger.DefaultOptions("badgerDB"))
+	badgerDB, err := badger.Open(badger.DefaultOptions("data/badgerDB"))
 	if err != nil {
 		panic(err)
 	}

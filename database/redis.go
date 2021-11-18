@@ -180,6 +180,37 @@ func (r RedisDB) DeleteExcept(keys []string) error {
 	}
 }
 
+func (r RedisDB) GetAllKeys() ([]string, []string) {
+	ctx := context.Background()
+	var keysDb []string
+
+	txnDel := func(tx *redis.Tx) error {
+		var cursor uint64
+		var err error
+
+		keysDb, _, err = tx.Scan(ctx, cursor, "*", 0).Result()
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	for {
+		err := r.Db.Watch(ctx, txnDel, keysDb...)
+		if err == nil {
+			// Success.
+			return keysDb, []string{}
+		}
+		if err == redis.TxFailedErr {
+			// Optimistic lock lost. Retry.
+			continue
+		}
+		// Return any other error.
+		return []string{}, []string{}
+	}
+}
+
 func ConnectToRedis() *redis.Client {
 
 	rdb := redis.NewClient(&redis.Options{

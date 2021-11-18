@@ -3,50 +3,62 @@ services:
   app1:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp1:/app/data
   app2:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp2:/app/data
   app3:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp3:/app/data
   app4:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp4:/app/data
   app5:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp5:/app/data
   app6:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp6:/app/data
   app7:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp7:/app/data
   app8:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp8:/app/data
   app9:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp9:/app/data
   app10:
     image: app
     network_mode: bridge
-    #environment:
-    #  - BOOTSTRAP_PEERS=${BOOTSTRAP}
+    volumes:
+      - volumeapp10:/app/data
+
+volumes:
+  volumeapp1:
+  volumeapp2:
+  volumeapp3:
+  volumeapp4:
+  volumeapp5:
+  volumeapp6:
+  volumeapp7:
+  volumeapp8:
+  volumeapp9:
+  volumeapp10:

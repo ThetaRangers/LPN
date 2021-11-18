@@ -2,7 +2,7 @@
 	"Database":"badger",
 	"RequestTimeout": 1000,
 	"ReplicationFactor": 5,
-	"OffloadingThreshold": 10,
+	"OffloadingThreshold": 100,
 	"DynamoTable": "cloud_storage",
 	"MigrationWindowMinutes": 10,
 	"MigrationPeriodSeconds": 10,

@@ -15,7 +15,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/dgraph-io/badger"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/multiformats/go-multiaddr"
@@ -881,29 +880,13 @@ func main() {
 	}
 
 	go func() {
-		var dab *badger.DB
-		dab = database.(db.BadgerDB).Db
 		for {
 			log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats())
 			log.Println("____________________Begin printing db____________________")
-			err := dab.View(func(txn *badger.Txn) error {
-				opts := badger.DefaultIteratorOptions
-				opts.PrefetchSize = 10
-				it := txn.NewIterator(opts)
-				defer it.Close()
-				for it.Rewind(); it.Valid(); it.Next() {
-					item := it.Item()
-					k := item.Key()
-					err := item.Value(func(v []byte) error {
-						fmt.Printf("key=%s, value=%s\n", k, v)
-						return nil
-					})
-					if err != nil {
-						return err
-					}
-				}
-				return nil
-			})
+			keys, values := database.GetAllKeys()
+			for i, k := range keys {
+				fmt.Println(k, ":", values[i])
+			}
 			log.Println("_____________________End printing db_____________________")
 			if err != nil {
 				log.Println("There is a problem")
