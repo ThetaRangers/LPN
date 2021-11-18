@@ -37,7 +37,7 @@ var promptString = ">>> "
 func main() {
 	var err error
 
-	fmt.Println("__         ______   __   __        ______     __         __     ______     __   __     ______  \n" +
+	fmt.Println(" __         ______   __   __        ______     __         __     ______     __   __     ______  \n" +
 		"/\\ \\       /\\  == \\ /\\ \"-.\\ \\      /\\  ___\\   /\\ \\       /\\ \\   /\\  ___\\   /\\ \"-.\\ \\   /\\__  _\\ \n" +
 		"\\ \\ \\____  \\ \\  _-/ \\ \\ \\-.  \\     \\ \\ \\____  \\ \\ \\____  \\ \\ \\  \\ \\  __\\   \\ \\ \\-.  \\  \\/_/\\ \\/ \n" +
 		" \\ \\_____\\  \\ \\_\\    \\ \\_\\\\\"\\_\\     \\ \\_____\\  \\ \\_____\\  \\ \\_\\  \\ \\_____\\  \\ \\_\\\\\"\\_\\    \\ \\_\\ \n" +
@@ -157,6 +157,23 @@ func main() {
 		case "lclosest":
 			if len(parts) == 2 {
 				allNodes, err := client.GetAllNodesLocal(parts[1])
+				if err != nil {
+					fmt.Printf("Error: failed to contact %s\n", parts[1])
+				}
+
+				node, err := client.GetClosestNode(allNodes)
+				if err != nil {
+					fmt.Println("Error: ", err)
+				} else {
+					fmt.Println("Closest node is ", node)
+				}
+
+			} else {
+				fmt.Println("Invalid number of parameters: closest <address>")
+			}
+		case "closest":
+			if len(parts) == 2 {
+				allNodes := client.GetAllNodes(parts[1])
 				if err != nil {
 					fmt.Printf("Error: failed to contact %s\n", parts[1])
 				}

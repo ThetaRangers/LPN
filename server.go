@@ -93,7 +93,7 @@ func (al *addrList) Set(value string) error {
 
 func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	addr := ip + ":50051"
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(utils.RequestTimeout)*time.Millisecond)
 	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithDefaultServiceConfig(retryPolicy))
 	if err != nil {
 		return nil, nil, err

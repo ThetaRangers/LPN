@@ -1,5 +1,6 @@
 {
 	"Database":"badger",
+	"RequestTimeout": 1000,
 	"ReplicationFactor": 5,
 	"OffloadingThreshold": 10,
 	"DynamoTable": "cloud_storage",
@@ -8,5 +9,5 @@
 	"MigrationThreshold": 10,
 	"Subnet": "172.17.0.0/24",
 	"TestingServer": "172.17.0.1",
-	"TestingMode": true,
+	"TestingMode": true
 }

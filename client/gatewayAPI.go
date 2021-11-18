@@ -99,20 +99,32 @@ func Ping(ip string) (time.Duration, error) {
 }
 
 func GetClosestNode(nodes []string) (string, error) {
-	min := time.Hour * 2
+	min := time.Hour
 	minNode := ""
 
-	for _, node := range nodes {
-		rtt, err := Ping(node)
-		if err != nil {
-			continue
-		}
+	channels := make([]chan time.Duration, 0)
 
-		if rtt < min {
+	for i, k := range nodes {
+		channels = append(channels, make(chan time.Duration))
+
+		k := k
+		i := i
+		go func() {
+			rtt, err := Ping(k)
+			if err != nil {
+				channels[i] <- -1
+			} else {
+				channels[i] <- rtt
+			}
+		}()
+	}
+
+	for i, c := range channels {
+		rtt := <-c
+		if rtt < min && rtt > 0 {
 			min = rtt
-			minNode = node
+			minNode = nodes[i]
 		}
-
 	}
 
 	if minNode == "" {
@@ -166,44 +178,3 @@ func (conn Connection) Del(k []byte) error {
 
 	return nil
 }
-
-/*
-func main() {
-
-	allNodes := GetAllNodesLocal("192.168.1.146")
-
-	closest, _ := GetClosestNode(allNodes)
-
-	conn, _ := Connect(closest)
-
-	input := make([][]byte, 1)
-	input[0] = []byte("defa")
-	err := conn.Put([]byte("a"), input)
-	if err != nil {
-		log.Error(err)
-	}
-
-	val, err := conn.Get([]byte("a"))
-	if err != nil {
-		log.Error(err)
-	}
-
-	err = conn.Append([]byte("a"), input)
-	if err != nil {
-		log.Error(err)
-	}
-
-	fmt.Println(val)
-
-	err = conn.Del([]byte("a"))
-	if err != nil {
-		log.Error(err)
-	}
-
-	val, err = conn.Get([]byte("a"))
-	if err != nil {
-		log.Error(err)
-	}
-
-	fmt.Println(val)
-}*/
