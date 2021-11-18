@@ -60,6 +60,7 @@ var cluster utils.ClusterRoutine
 
 var ip net.IP
 var address string
+var nodeId string
 var channel chan migration.KeyOp
 var raftN *replication.RaftStruct
 var dhtRoutine replication.DhtRoutine
@@ -532,9 +533,11 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.JoinResponse
 		var err error
 		bootstrapNodes := in.GetBootstrap()
 		for _, b := range bootstrapNodes {
-			err := config.BootstrapPeers.Set(b)
-			if err != nil {
-				log.Println(err)
+			if b != nodeId {
+				err := config.BootstrapPeers.Set(b)
+				if err != nil {
+					log.Println(err)
+				}
 			}
 
 		}
@@ -757,24 +760,24 @@ func main() {
 	time.Sleep(3 * time.Second)
 
 	ctx := context.Background()
-	ipStr := initializeHost(ctx)
+	nodeId = initializeHost(ctx)
 
 	var registerCluster cloud.ReplicaSet
 	if !utils.TestingMode {
-		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.N, utils.AwsRegion)
+		registerCluster = cloud.RegisterToTheNetwork(ip.String(), nodeId, utils.N, utils.AwsRegion)
 		dynamo, err = cloud.SetupClient(utils.AwsRegion)
 		if err != nil {
 			log.Fatal(err)
 		}
 	} else {
-		registerCluster = cloud.RegisterStub(ip.String(), ipStr, utils.N, utils.AwsRegion)
+		registerCluster = cloud.RegisterStub(ip.String(), nodeId, utils.N, utils.AwsRegion)
 	}
 
 	// Ready to start dht
 	if len(registerCluster.IpList) > 0 {
 		for j := 0; j < len(registerCluster.IpList); j++ {
 			r := registerCluster.IpList[j]
-			if r.IpString != ipStr {
+			if r.IpString != nodeId {
 				replicaSet = append(replicaSet, r.Ip)
 				err := config.BootstrapPeers.Set(r.IpString)
 				if err != nil {
