@@ -23,7 +23,7 @@ var TestingMode bool
 var MigrationPeriodSeconds int
 var RequestTimeout int
 var Database db.Database
-
+var Subnet string
 
 func GetConfiguration() {
 	file, err := os.Open("config.json")
@@ -49,6 +49,7 @@ func GetConfiguration() {
 		MigrationPeriodSeconds int
 		RequestTimeout         int
 		DbAddress              string
+		Subnet                 string
 	}{}
 	err = decoder.Decode(&parser)
 	if err != nil {
@@ -72,4 +73,5 @@ func GetConfiguration() {
 	TestingMode = parser.TestingMode
 	MigrationPeriodSeconds = parser.MigrationPeriodSeconds
 	RequestTimeout = parser.RequestTimeout
+	Subnet = parser.Subnet
 }

@@ -26,7 +26,6 @@ import (
 
 const (
 	port = ":50051"
-	mask = "172.17.0.0/24"
 )
 
 var retryPolicy = `{
@@ -725,7 +724,7 @@ func main() {
 			case *net.IPAddr:
 				ip = v.IP
 			}
-			check, err := ContainsNetwork(mask, ip)
+			check, err := ContainsNetwork(utils.Subnet, ip)
 			if err != nil {
 				log.Panic(err)
 			}
