@@ -22,15 +22,13 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
-	"os"
 	"strings"
 	"time"
 )
 
 const (
-	port       = ":50051"
-	mask       = "172.17.0.0/24"
-	regService = 0
+	port = ":50051"
+	mask = "172.17.0.0/24"
 )
 
 var retryPolicy = `{
@@ -482,8 +480,6 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.JoinResponse
 
 	if cluster.Len() != 0 {
 		// If node is part of a cluster and needs to transfer
-		// TODO transfer cluster
-
 		log.Println("Leaving old cluster: ", cluster)
 		leader := raftN.GetLeader()
 		c, _, err := ContactServer(leader)
@@ -660,7 +656,7 @@ func houseKeeper(ctx context.Context) {
 			}
 		}
 
-		time.Sleep(10 * time.Second)
+		time.Sleep(time.Duration(utils.MigrationPeriodSeconds) * time.Second)
 	}
 }
 
@@ -753,24 +749,6 @@ func main() {
 	s := grpc.NewServer()
 	pb.RegisterOperationsServer(s, &server{})
 
-	bootstrap := os.Getenv("BOOTSTRAP_PEERS")
-	if len(bootstrap) != 0 {
-		log.Println("Found bootstrap peer at ", bootstrap)
-	}
-
-	// Joining the DHT
-
-	//For debugging
-	if len(bootstrap) == 0 {
-		//flag.Var(&config.BootstrapPeers, "peer", "Peer multiaddress for peer discovery")
-	} else {
-		//addr, _ := multiaddr.NewMultiaddr(bootstrap)
-		//config.BootstrapPeers.Set(bootstrap)
-	}
-
-	//flag.IntVar(&config.Port, "port", 0, "")
-	//flag.Parse()
-
 	// Initialize Raft replication
 	cluster = utils.NewClusterRoutine()
 	dhtRoutine = replication.NewDhtRoutine(ip.String(), &cluster)
@@ -781,14 +759,13 @@ func main() {
 	ipStr := initializeHost(ctx)
 
 	var registerCluster cloud.ReplicaSet
-	if regService == 0 {
-		// TODO maybe add support for ip6
+	if !utils.TestingMode {
 		registerCluster = cloud.RegisterToTheNetwork(ip.String(), ipStr, utils.N, utils.AwsRegion)
 		dynamo, err = cloud.SetupClient(utils.AwsRegion)
 		if err != nil {
 			log.Fatal(err)
 		}
-	} else if regService == 1 {
+	} else {
 		registerCluster = cloud.RegisterStub(ip.String(), ipStr, utils.N, utils.AwsRegion)
 	}
 

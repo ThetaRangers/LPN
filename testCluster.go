@@ -38,12 +38,12 @@ func workerThread(addr string) {
 	data := generateData(30, 3)
 
 	for {
+		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
+
 		err := conn.Put([]byte(key), data)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		time.Sleep(time.Duration(rand.Intn(10)) * time.Second)
 	}
 }
 
@@ -55,6 +55,8 @@ func main() {
 	conn, _, _ := client.Connect("172.17.0.2")
 
 	for {
+		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
+
 		start := time.Now()
 		err := conn.Put([]byte("a"), generateData(100, 2))
 		if err != nil {
@@ -63,7 +65,5 @@ func main() {
 		elapsed := time.Since(start)
 
 		fmt.Println(elapsed)
-
-		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 	}
 }

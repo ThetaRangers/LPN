@@ -22,6 +22,8 @@ var DynamoTable string
 var MigrationWindowMinutes int
 var TestingServer string
 var MigrationThreshold int
+var TestingMode bool
+var MigrationPeriodSeconds int
 
 type Configuration struct {
 	Database  db.Database
@@ -48,6 +50,8 @@ func GetConfiguration() Configuration {
 		MigrationWindowMinutes int
 		TestingServer          string
 		MigrationThreshold     int
+		TestingMode            bool
+		MigrationPeriodSeconds int
 	}{}
 	err = decoder.Decode(&parser)
 	if err != nil {
@@ -69,6 +73,8 @@ func GetConfiguration() Configuration {
 	MigrationWindowMinutes = parser.MigrationWindowMinutes
 	MigrationThreshold = parser.MigrationThreshold
 	TestingServer = parser.TestingServer
+	TestingMode = parser.TestingMode
+	MigrationPeriodSeconds = parser.MigrationPeriodSeconds
 
 	return Configuration{Database: database}
 }

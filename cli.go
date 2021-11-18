@@ -6,6 +6,7 @@ import (
 	"github.com/c-bata/go-prompt"
 	"google.golang.org/grpc"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -18,9 +19,10 @@ func completer(d prompt.Document) []prompt.Suggest {
 		{Text: "connect", Description: "Connect to a node"},
 		{Text: "disconnect", Description: "Disconnect from the node"},
 		{Text: "quit", Description: "Quit from the cli"},
-		{Text: "lnode", Description: "List nodes from local"},
-		{Text: "nodes", Description: "List nodes from local"},
+		{Text: "lnodes", Description: "List nodes from local"},
+		{Text: "nodes", Description: "List nodes from cloud registration server"},
 		{Text: "lclosest", Description: "Get closest node from local"},
+		{Text: "closest", Description: "Get closest node from local"},
 	}
 	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
 }
@@ -30,19 +32,20 @@ var conn *client.Connection
 var connected = false
 var grpcConn *grpc.ClientConn
 
+var promptString = ">>> "
+
 func main() {
 	var err error
 
-	fmt.Println(" __         ______   __   __        ______     __         __     ______     __   __     ______  \n" +
+	fmt.Println("__         ______   __   __        ______     __         __     ______     __   __     ______  \n" +
 		"/\\ \\       /\\  == \\ /\\ \"-.\\ \\      /\\  ___\\   /\\ \\       /\\ \\   /\\  ___\\   /\\ \"-.\\ \\   /\\__  _\\ \n" +
 		"\\ \\ \\____  \\ \\  _-/ \\ \\ \\-.  \\     \\ \\ \\____  \\ \\ \\____  \\ \\ \\  \\ \\  __\\   \\ \\ \\-.  \\  \\/_/\\ \\/ \n" +
 		" \\ \\_____\\  \\ \\_\\    \\ \\_\\\\\"\\_\\     \\ \\_____\\  \\ \\_____\\  \\ \\_\\  \\ \\_____\\  \\ \\_\\\\\"\\_\\    \\ \\_\\ \n" +
-		"  \\/_____/   \\/_/     \\/_/ \\/_/      \\/_____/   \\/_____/   \\/_/   \\/_____/   \\/_/ \\/_/     \\/_/ \n" +
-		"                                                                                                ")
+		"  \\/_____/   \\/_/     \\/_/ \\/_/      \\/_____/   \\/_____/   \\/_/   \\/_____/   \\/_/ \\/_/     \\/_/ \n                                                                                                ")
 
 	for {
 
-		t := prompt.Input(">>> ", completer,
+		t := prompt.Input(promptString, completer,
 			prompt.OptionTitle("lpn-promp"),
 			prompt.OptionHistory(history),
 			prompt.OptionPrefixTextColor(prompt.Green),
@@ -146,16 +149,16 @@ func main() {
 		case "nodes":
 			if len(parts) == 2 {
 				allNodes := client.GetAllNodes(parts[1])
+
 				fmt.Println("Nodes: ", allNodes)
 			} else {
 				fmt.Println("Invalid number of parameters: lnodes <address>")
 			}
-
-		case "closest":
+		case "lclosest":
 			if len(parts) == 2 {
 				allNodes, err := client.GetAllNodesLocal(parts[1])
 				if err != nil {
-					fmt.Printf("Error: failed to contact %s", parts[1])
+					fmt.Printf("Error: failed to contact %s\n", parts[1])
 				}
 
 				node, err := client.GetClosestNode(allNodes)
@@ -171,12 +174,17 @@ func main() {
 
 		case "connect":
 			if len(parts) == 2 {
-				conn, grpcConn, err = client.Connect(parts[1])
-				if err != nil {
-					fmt.Printf("Error: failed to contact %s", parts[1])
+				if connected {
+					fmt.Println("Already connected to a node")
 				} else {
-					fmt.Println("Connection successful")
-					connected = true
+					conn, grpcConn, err = client.Connect(parts[1])
+					if err != nil {
+						fmt.Printf("Error: failed to contact %s\n", parts[1])
+					} else {
+						fmt.Println("Connection successful")
+						connected = true
+						promptString = parts[1] + "#" + promptString
+					}
 				}
 			} else {
 				fmt.Println("Invalid number of parameters: connect <address>")
@@ -187,7 +195,12 @@ func main() {
 				fmt.Println("Error while closing")
 			}
 
+			promptString = ">>> "
 			connected = false
+		case "grr":
+			r, _ := strconv.ParseInt(strings.TrimPrefix("\\U0001F621", "\\U"), 16, 32)
+
+			fmt.Println(string(r))
 		}
 
 	}
