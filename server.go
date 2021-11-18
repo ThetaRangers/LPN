@@ -2,7 +2,6 @@ package main
 
 import (
 	"SDCC/cloud"
-	db "SDCC/database"
 	"SDCC/dht"
 	"SDCC/metadata"
 	"SDCC/migration"
@@ -59,7 +58,6 @@ type addrList []multiaddr.Multiaddr
 var replicaSet []string
 var cluster utils.ClusterRoutine
 
-var database db.Database
 var ip net.IP
 var address string
 var channel chan migration.KeyOp
@@ -164,7 +162,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 
 // GetInternal internal function called by other nodes to retrieve an information
 func (s *server) GetInternal(ctx context.Context, in *pb.Key) (*pb.Value, error) {
-	val, _ := database.Get(in.GetKey())
+	val, _ := utils.Database.Get(in.GetKey())
 	return &pb.Value{Value: val}, nil
 }
 
@@ -455,7 +453,7 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 
 	if cost < in.GetCost() {
 		// Do migration
-		value, err := database.Get(keyBytes)
+		value, err := utils.Database.Get(keyBytes)
 		if err != nil {
 			return &pb.Outcome{Out: false}, nil
 		}
@@ -504,13 +502,13 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.JoinResponse
 			log.Fatal("ERROR IN SHUTDOWN", err)
 		}
 
-		raftN = replication.ReInitializeRaft(ip.String(), &database, &cluster, &dhtRoutine)
+		raftN = replication.ReInitializeRaft(ip.String(), &utils.Database, &cluster, &dhtRoutine)
 
 		log.Println("Transferring keys")
 		myKeys := keyDb.GetKeys()
 		cluster.Invalidate()
 
-		err = database.DeleteExcept(myKeys)
+		err = utils.Database.DeleteExcept(myKeys)
 		if err != nil {
 			log.Fatal("Error while transferring", err)
 		}
@@ -518,7 +516,7 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.JoinResponse
 		for _, k := range myKeys {
 			keys = append(keys, k)
 
-			val, _ := database.Get([]byte(k))
+			val, _ := utils.Database.Get([]byte(k))
 
 			buffer, _ := json.Marshal(val)
 			values = append(values, buffer)
@@ -612,7 +610,7 @@ func ContainsNetwork(mask string, ip net.IP) (bool, error) {
 }
 
 func init() {
-	database = utils.GetConfiguration().Database
+	utils.GetConfiguration()
 }
 
 func houseKeeper(ctx context.Context) {
@@ -755,7 +753,7 @@ func main() {
 	// Initialize Raft replication
 	cluster = utils.NewClusterRoutine()
 	dhtRoutine = replication.NewDhtRoutine(ip.String(), &cluster)
-	raftN = replication.InitializeRaft(ip.String(), &database, &cluster, &dhtRoutine)
+	raftN = replication.InitializeRaft(ip.String(), &utils.Database, &cluster, &dhtRoutine)
 	time.Sleep(3 * time.Second)
 
 	ctx := context.Background()
@@ -883,7 +881,7 @@ func main() {
 		for {
 			log.Printf("Stats for : %s - %s", ip.String(), raftN.RaftNode.Stats())
 			log.Println("____________________Begin printing db____________________")
-			keys, values := database.GetAllKeys()
+			keys, values := utils.Database.GetAllKeys()
 			for i, k := range keys {
 				fmt.Println(k, ":", values[i])
 			}

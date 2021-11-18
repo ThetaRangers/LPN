@@ -194,7 +194,7 @@ func (r RedisDB) GetAllKeys() ([]string, []string) {
 		err := r.Db.Watch(ctx, txnDel, keysDb...)
 		if err == nil {
 			// Success.
-			return keysDb, []string{}
+			return keysDb, keysDb
 		}
 		if err == redis.TxFailedErr {
 			// Optimistic lock lost. Retry.
@@ -205,10 +205,10 @@ func (r RedisDB) GetAllKeys() ([]string, []string) {
 	}
 }
 
-func ConnectToRedis() *redis.Client {
+func ConnectToRedis(addr string) *redis.Client {
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     DbAddress,
+		Addr:     addr,
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
