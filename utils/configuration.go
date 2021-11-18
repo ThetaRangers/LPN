@@ -80,7 +80,7 @@ func GetConfiguration() Configuration {
 	TestingMode = parser.TestingMode
 	MigrationPeriodSeconds = parser.MigrationPeriodSeconds
 	RequestTimeout = parser.RequestTimeout
-	DbAddress = parser.DbAddress
+	db.DbAddress = parser.DbAddress
 
 	return Configuration{Database: database}
 }

@@ -1,5 +1,7 @@
 package database
 
+var DbAddress string
+
 type Database interface {
 	Get(key []byte) ([][]byte, error)
 	Put(key []byte, value [][]byte) error

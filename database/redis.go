@@ -214,7 +214,7 @@ func (r RedisDB) GetAllKeys() ([]string, []string) {
 func ConnectToRedis() *redis.Client {
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "172.17.0.1:6379",
+		Addr:     DbAddress,
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
