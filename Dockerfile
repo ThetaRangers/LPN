@@ -4,6 +4,7 @@ FROM golang
 
 
 EXPOSE 50051
+EXPOSE 42424
 
 WORKDIR /app
 
