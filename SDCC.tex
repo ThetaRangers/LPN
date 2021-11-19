@@ -9,11 +9,11 @@
 \usepackage[sorting=none]{biblatex}
 \addbibresource{SDCC.bib}
 
-\usepackage{listings}
-\lstset{
-  language=go,
-  basicstyle=\ttfamily
-}
+%\usepackage{listings}
+%\lstset{
+%  language=go,
+%  basicstyle=\ttfamily
+%}
 
 \begin{document}
 
@@ -33,30 +33,41 @@ Roma, Italia\\
 }
 
 \pdfinfo{
-  /Title    (SDCC)
+  /Title    (LPN: Log Partition Network)
   /Author   (Daniele Ferrarelli, Marco Ferri, Lorenzo Valeriani)
   /Creator  (Daniele Ferrarelli, Marco Ferri, Lorenzo Valeriani)
   /Producer (Daniele Ferrarelli, Marco Ferri, Lorenzo Valeriani)
-  /Subject  (SDCC)
-  /Keywords (SDCC)
+  /Subject  (LPN)
+  /Keywords (LPN)
 }
 
 \maketitle
 
 \begin{abstract}
-Questo documento è un modello. \LaTeX
+In questo documento si illustra una soluzione implementativa di uno storage chiave-valore distribuito per edge computing.
 \end{abstract}
 
 \begin{IEEEkeywords}
 sistemi distribuiti, peer-to-peer, edge computing, cloud computing
 \end{IEEEkeywords}
 
-\section{Sezione}
-
-\lettrine{\textbf{I}}{\textbf{nizio}} documento in cui inseriremo la relazione del
-progetto di sistemi distribuiti e cloud computing.\cite{foo}
-
-\subsection{Sottosezione}
+\section{Introduzione}
+\lettrine{\textbf{L}}{\textbf{e}} reti peer-to-peer rappresentano una soluzione comune per il problema dello storage distribuito. Tra queste, quelle strutturate si prestano particolarmente alle tipologie di storage chiave-valore. Attraverso tecniche come il consistent hashing, si supportano le operazioni di ricerca delle informazioni in modo efficiente %aggiungere citazione coatta
+L'edge computing è un paradigma di computazione che estende il cloud tradizionale con le funzionalità di computazione e storage offerte da nodi localizzati ai bordi della rete e quindi vicino agli utenti. La soluzione proposta sfrutta una rete peer-to-peer strutturata per indicizzare le risorse distribuite sui vari nodi edge, traendo i benefici di entrambe le realtà. Kademlia Raft (bisogna dire che è fault tollerant) e tanto cloud
+\section{Topologia}
+Qui bisogna dire che si usa indexing
+\subsection{Rete di indexing}
+\subsection{Rete di replicazione}
+\section{Storage locale}
+\section{Consistenza e semantica di errore}
+\section{Migrazione}
+\section{Integrazione con il cloud}
+\section{Limitazioni}
+\section{Testing}
+\section{Manuale d'uso}
+\subsection{Installazione}
+\subsection{Configurazione}
+\subsection{Esecuzione}
 
 Sottosezione del documento in cui inseriremo la relazione del progetto di sistemi
 distribuiti e cloud computing.
