@@ -5,22 +5,24 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"time"
 )
 
 var N int
 var Threshold uint64
 var DynamoTable string
-var MigrationWindowMinutes int
+var MigrationWindowTime time.Duration
 var TestingServer string
-var MigrationThreshold int
+var MigrationThreshold uint64
 var TestingMode bool
-var MigrationPeriodSeconds int
-var RequestTimeout int
+var MigrationPeriodTime time.Duration
+var RequestTimeout time.Duration
 var Database db.Database
 var Subnet string
 var AwsRegion string
-var CostRead int
-var CostWrite int
+var CostRead uint64
+var CostWrite uint64
+var MaxKey int
 
 func GetConfiguration() {
 	file, err := os.Open("config.json")
@@ -35,21 +37,22 @@ func GetConfiguration() {
 	}(file)
 	decoder := json.NewDecoder(file)
 	parser := struct {
-		Database               string
-		ReplicationFactor      int
-		OffloadingThreshold    uint64
-		DynamoTable            string
-		MigrationWindowMinutes int
-		TestingServer          string
-		MigrationThreshold     int
-		TestingMode            bool
-		MigrationPeriodSeconds int
-		RequestTimeout         int
-		DbAddress              string
-		Subnet                 string
-		AwsRegion              string
-		CostRead               int
-		CostWrite              int
+		Database                   string
+		ReplicationFactor          int
+		OffloadingThreshold        uint64
+		DynamoTable                string
+		MigrationWindowMinutes     uint
+		TestingServer              string
+		MigrationThreshold         uint64
+		TestingMode                bool
+		MigrationPeriodSeconds     uint
+		RequestTimeoutMilliseconds uint
+		DbAddress                  string
+		Subnet                     string
+		AwsRegion                  string
+		CostRead                   uint64
+		CostWrite                  uint64
+		MaxKey                     int
 	}{}
 	err = decoder.Decode(&parser)
 	if err != nil {
@@ -67,14 +70,15 @@ func GetConfiguration() {
 	N = parser.ReplicationFactor
 	Threshold = parser.OffloadingThreshold
 	DynamoTable = parser.DynamoTable
-	MigrationWindowMinutes = parser.MigrationWindowMinutes
+	MigrationWindowTime = time.Minute * time.Duration(parser.MigrationWindowMinutes)
 	MigrationThreshold = parser.MigrationThreshold
 	TestingServer = parser.TestingServer
 	TestingMode = parser.TestingMode
-	MigrationPeriodSeconds = parser.MigrationPeriodSeconds
-	RequestTimeout = parser.RequestTimeout
+	MigrationPeriodTime = time.Second * time.Duration(parser.MigrationPeriodSeconds)
+	RequestTimeout = time.Millisecond * time.Duration(parser.RequestTimeoutMilliseconds)
 	Subnet = parser.Subnet
 	AwsRegion = parser.AwsRegion
 	CostRead = parser.CostRead
 	CostWrite = parser.CostWrite
+	MaxKey = parser.MaxKey
 }

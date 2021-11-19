@@ -5,12 +5,6 @@ import (
 	"time"
 )
 
-var costRead = 1
-var costWrite = 2
-var windowLength = 10 * time.Minute
-
-var migrationThreashold = 1
-
 const (
 	ReadOperation  = 0
 	WriteOperation = 1
@@ -26,7 +20,7 @@ var external = make(map[string][]TimeOp)
 
 type TimeOp struct {
 	time time.Time
-	cost int
+	cost uint64
 }
 
 type KeyOp struct {
@@ -42,11 +36,11 @@ func Reset() {
 }
 
 func SetRead(key string, m map[string][]TimeOp) {
-	updateAndEvaluate(key, costRead, m)
+	updateAndEvaluate(key, utils.CostRead, m)
 }
 
 func SetWrite(key string, m map[string][]TimeOp) {
-	updateAndEvaluate(key, costWrite, m)
+	updateAndEvaluate(key, utils.CostWrite, m)
 }
 
 func SetMigrated(key string) {
@@ -58,7 +52,7 @@ func SetExported(key string) {
 	master[key] = make([]TimeOp, 0)
 }
 
-func updateAndEvaluate(key string, cost int, m map[string][]TimeOp) {
+func updateAndEvaluate(key string, cost uint64, m map[string][]TimeOp) {
 	slice := m[key]
 	now := time.Now()
 	current := TimeOp{time: now, cost: cost}
@@ -73,17 +67,17 @@ func updateAndEvaluate(key string, cost int, m map[string][]TimeOp) {
 	}
 }
 
-func GetCostMaster(key string, now time.Time) int {
+func GetCostMaster(key string, now time.Time) uint64 {
 	return GetCost(key, now, master)
 }
 
-func GetCostExternal(key string, now time.Time) int {
+func GetCostExternal(key string, now time.Time) uint64 {
 	return GetCost(key, now, external)
 }
 
-func GetCost(key string, now time.Time, m map[string][]TimeOp) int {
+func GetCost(key string, now time.Time, m map[string][]TimeOp) uint64 {
 	slice := m[key]
-	var cost int
+	var cost uint64
 	if len(slice) == 0 {
 		return 0
 	}
@@ -100,7 +94,7 @@ func EvaluateMigration() []string {
 	migrationKeys := make([]string, 0)
 	now := time.Now()
 
-	for k, _ := range external {
+	for k := range external {
 		cost := GetCostExternal(k, now)
 
 		// Find max cost
@@ -116,7 +110,7 @@ func deleteExpired(input []TimeOp, now time.Time) []TimeOp {
 	tmp := input
 	var p int
 
-	windowStart := now.Add(-windowLength)
+	windowStart := now.Add(-utils.MigrationWindowTime)
 	//windowStart := now
 
 	index := 0
@@ -153,17 +147,9 @@ func deleteExpired(input []TimeOp, now time.Time) []TimeOp {
 	return input[index:]
 }
 
-func Evaluate() {
-
-}
-
-func ManagementThread(channel chan KeyOp, costR int, costW int, windowMinutes int) {
+func ManagementThread(channel chan KeyOp) {
 	var op KeyOp
 	var m map[string][]TimeOp
-
-	costRead = costR
-	costWrite = costW
-	windowLength = time.Minute * time.Duration(windowMinutes)
 
 	for {
 		op = <-channel

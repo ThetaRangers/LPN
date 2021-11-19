@@ -82,7 +82,7 @@ func (al *addrList) Set(value string) error {
 
 func ContactServer(ip string) (pb.OperationsClient, *grpc.ClientConn, error) {
 	addr := ip + ":50051"
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(utils.RequestTimeout)*time.Millisecond)
+	ctx, _ := context.WithTimeout(context.Background(), utils.RequestTimeout)
 	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithDefaultServiceConfig(retryPolicy))
 	if err != nil {
 		return nil, nil, err
@@ -162,6 +162,9 @@ func (s *server) GetInternal(ctx context.Context, in *pb.Key) (*pb.Value, error)
 // becomes the responsible.
 func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 	log.Printf("Received: client Put(%v, %v)", in.GetKey(), in.GetValue())
+	if len(in.GetKey()) > utils.MaxKey {
+		return &pb.Ack{Msg: "Err"}, errors.New("key too long")
+	}
 
 	ctxDht := context.Background()
 	key := string(in.GetKey())
@@ -285,6 +288,9 @@ func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, err
 // Append rpc function called to concatenate a value to an already present one. If the value is not already in the
 // system, it is simply added
 func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
+	if len(in.GetKey()) > utils.MaxKey {
+		return &pb.Ack{Msg: "Err"}, errors.New("key too long")
+	}
 	key := string(in.GetKey())
 
 	var val string
@@ -652,7 +658,7 @@ func houseKeeper(ctx context.Context) {
 			}
 		}
 
-		time.Sleep(time.Duration(utils.MigrationPeriodSeconds) * time.Second)
+		time.Sleep(utils.MigrationPeriodTime)
 	}
 }
 
@@ -731,7 +737,7 @@ func main() {
 
 	// Initialize logging channel
 	channel = make(chan migration.KeyOp, 200)
-	go migration.ManagementThread(channel, utils.CostRead, utils.CostWrite, utils.MigrationWindowMinutes)
+	go migration.ManagementThread(channel)
 
 	// Initialize migration thread
 	go houseKeeper(context.Background())
