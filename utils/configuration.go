@@ -7,12 +7,6 @@ import (
 	"os"
 )
 
-const (
-	AwsRegion = "us-east-1"
-	CostRead  = 1
-	CostWrite = 2
-)
-
 var N int
 var Threshold uint64
 var DynamoTable string
@@ -23,7 +17,10 @@ var TestingMode bool
 var MigrationPeriodSeconds int
 var RequestTimeout int
 var Database db.Database
-
+var Subnet string
+var AwsRegion string
+var CostRead int
+var CostWrite int
 
 func GetConfiguration() {
 	file, err := os.Open("config.json")
@@ -49,6 +46,10 @@ func GetConfiguration() {
 		MigrationPeriodSeconds int
 		RequestTimeout         int
 		DbAddress              string
+		Subnet                 string
+		AwsRegion              string
+		CostRead               int
+		CostWrite              int
 	}{}
 	err = decoder.Decode(&parser)
 	if err != nil {
@@ -72,4 +73,8 @@ func GetConfiguration() {
 	TestingMode = parser.TestingMode
 	MigrationPeriodSeconds = parser.MigrationPeriodSeconds
 	RequestTimeout = parser.RequestTimeout
+	Subnet = parser.Subnet
+	AwsRegion = parser.AwsRegion
+	CostRead = parser.CostRead
+	CostWrite = parser.CostWrite
 }

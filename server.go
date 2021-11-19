@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -25,8 +24,8 @@ import (
 )
 
 const (
-	port = ":50051"
-	mask = "172.17.0.0/24"
+	grpcPort = ":50051"
+	dhtPort  = 42424
 )
 
 var retryPolicy = `{
@@ -41,13 +40,6 @@ var retryPolicy = `{
 			  "RetryableStatusCodes": [ "UNAVAILABLE" ]
 		  }
 		}]}`
-
-type Config struct {
-	Port           int
-	Seed           int64
-	BootstrapPeers addrList
-	TestMode       bool
-}
 
 type server struct {
 	pb.UnimplementedOperationsServer
@@ -65,7 +57,6 @@ var channel chan migration.KeyOp
 var raftN *replication.RaftStruct
 var dhtRoutine replication.DhtRoutine
 var kDht *dht.KDht
-var config = Config{}
 var h host.Host
 
 var dynamo *dynamodb.DynamoDB
@@ -532,9 +523,10 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.JoinResponse
 	} else {
 		var err error
 		bootstrapNodes := in.GetBootstrap()
+		var bootstrapPeers addrList
 		for _, b := range bootstrapNodes {
 			if b != nodeId {
-				err := config.BootstrapPeers.Set(b)
+				err := bootstrapPeers.Set(b)
 				if err != nil {
 					log.Println(err)
 				}
@@ -542,7 +534,7 @@ func (s *server) Join(ctx context.Context, in *pb.JoinMessage) (*pb.JoinResponse
 
 		}
 
-		kDht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
+		kDht, err = dht.NewKDht(ctx, h, bootstrapPeers)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -668,9 +660,7 @@ func initializeHost(ctx context.Context) string {
 	var addrString string
 	var err error
 
-	flag.Int64Var(&config.Seed, "seed", 0, "Seed value for generating a PeerID, 0 is random")
-
-	h, err = dht.NewHost(ctx, config.Seed, config.Port)
+	h, err = dht.NewHost(ctx, 0, dhtPort)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -725,13 +715,13 @@ func main() {
 			case *net.IPAddr:
 				ip = v.IP
 			}
-			check, err := ContainsNetwork(mask, ip)
+			check, err := ContainsNetwork(utils.Subnet, ip)
 			if err != nil {
 				log.Panic(err)
 			}
 
 			if check {
-				//address = fmt.Sprintf("%s%s", ip, port)
+				//address = fmt.Sprintf("%s%s", ip, grpcPort)
 				address = ip.String()
 				log.Printf("IP: %s", ip)
 				break
@@ -746,7 +736,7 @@ func main() {
 	// Initialize migration thread
 	go houseKeeper(context.Background())
 
-	lis, err := net.Listen("tcp", port)
+	lis, err := net.Listen("tcp", grpcPort)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -776,18 +766,19 @@ func main() {
 
 	// Ready to start dht
 	if len(registerCluster.IpList) > 0 {
+		var bootstrapPeers addrList
 		for j := 0; j < len(registerCluster.IpList); j++ {
 			r := registerCluster.IpList[j]
 			if r.IpString != nodeId {
 				replicaSet = append(replicaSet, r.Ip)
-				err := config.BootstrapPeers.Set(r.IpString)
+				err := bootstrapPeers.Set(r.IpString)
 				if err != nil {
 					panic(err)
 				}
 			}
 		}
 
-		kDht, err = dht.NewKDht(ctx, h, config.BootstrapPeers)
+		kDht, err = dht.NewKDht(ctx, h, bootstrapPeers)
 		if err != nil {
 			log.Fatal(err)
 		}
