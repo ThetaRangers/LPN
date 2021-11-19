@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+FROM golang
+
+
+WORKDIR /app
+
+COPY operations ./operations
+COPY registerServer ./registerServer
+COPY client ./client
+
+COPY go.mod ./go.mod
+COPY go.sum ./go.sum
+COPY cli.go ./cli.go
+
+#RUN go build cli.go
+
+CMD ["/usr/local/go run /app/cli.go"]

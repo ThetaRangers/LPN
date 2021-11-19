@@ -13,6 +13,9 @@ executable:
 docker_image:
 	DOCKER_BUILDKIT=1 docker build -t app .
 
+cli:
+	DOCKER_BUILDKIT=1 docker build -f DockerfileCli -t lpn-cli .
+
 clean:
 	rm server
 

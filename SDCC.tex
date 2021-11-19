@@ -17,7 +17,7 @@
 
 \begin{document}
 
-\title{SDCC}
+\title{LPN: Log Partition Network}
 
 \author{
 \IEEEauthorblockN{Daniele Ferrarelli\IEEEauthorrefmark{1},
@@ -44,37 +44,64 @@ Roma, Italia\\
 \maketitle
 
 \begin{abstract}
-In questo documento si illustra una soluzione implementativa di uno storage chiave-valore distribuito per edge computing.
+In questo documento si illustra una soluzione implementativa di uno storage chiave-valore distribuito per edge computing scritta in Go.
 \end{abstract}
 
 \begin{IEEEkeywords}
-sistemi distribuiti, peer-to-peer, edge computing, cloud computing
+sistemi distribuiti, peer-to-peer, edge computing, cloud computing, distributed system, key-value storage
 \end{IEEEkeywords}
 
 \section{Introduzione}
-\lettrine{\textbf{L}}{\textbf{e}} reti peer-to-peer rappresentano una soluzione comune per il problema dello storage distribuito. Tra queste, quelle strutturate si prestano particolarmente alle tipologie di storage chiave-valore. Attraverso tecniche come il consistent hashing, si supportano le operazioni di ricerca delle informazioni in modo efficiente %aggiungere citazione coatta
-L'edge computing è un paradigma di computazione che estende il cloud tradizionale con le funzionalità di computazione e storage offerte da nodi localizzati ai bordi della rete e quindi vicino agli utenti. La soluzione proposta sfrutta una rete peer-to-peer strutturata per indicizzare le risorse distribuite sui vari nodi edge, traendo i benefici di entrambe le realtà. Kademlia Raft (bisogna dire che è fault tollerant) e tanto cloud
+\lettrine{\textbf{L}}{\textbf{e}} reti peer-to-peer rappresentano una soluzione comune per il problema dello storage distribuito.
+Tra queste, quelle strutturate si prestano particolarmente alle tipologie di storage chiave-valore.
+Attraverso tecniche come il consistent hashing, si supportano le operazioni di ricerca delle informazioni in modo efficiente %aggiungere citazione coatta
+L'edge computing è un paradigma di computazione che estende il cloud tradizionale con le funzionalità di computazione e
+storage offerte da nodi localizzati ai bordi della rete e quindi vicino agli utenti. La soluzione proposta sfrutta una
+rete peer-to-peer strutturata per indicizzare le risorse distribuite sui vari nodi edge, cercando di trarre beneficio da entrambe le realtà.
+Il protocollo utilizzato dalla rete peer-to-peer è Kademlia,% altra citazione coatta
+nell'implementazione in Go fornita da IPFS. I dati sono replicati su più nodi affinché il sistema sia tollerante ai guasti.
+La consistenza tra le repliche dei dati è affidata all'algoritmo di consenso distribuito Raft\cite{raft}\cite{raftGolang}. %utilizzando l'implementazione fornita da Hashicorp. %citazione coatta.
+Il progetto fa largo uso dei servizi cloud forniti da Amazon Web Services, quali RDS, Lambda e DynamoDB.
+La comunicano tra i nodi e con i client è attuata tramite chiamate gRPC.
+
 \section{Topologia}
-Qui bisogna dire che si usa indexing
+I nodi sono collegati per formare una rete peer-to-peer strutturata, su questa è presente un'ulteriore serie di collegamenti
+che costituisce la rete di replicazione dei dati. Quando si inserisce un nuovo dato nel sistema, questo sarà memorizzato
+almeno nel nodo che ha ricevuto l'operazione di inserimento, per far sì che la latenza di rete tra l'utente ed il dato sia minima.
+Quest'ultimo nodo sarà il responsabile di quel dato, identificato da una chiave. Oltre a questo, il dato sarà replicato
+su un insieme di nodi che possono essere contattati in caso di fallimento del responsabile
+
 \subsection{Rete di indexing}
+Il sistema sfrutta la DHT di Kademlia per associare ad ogni chiave memorizzata l'indirizzo IP del nodo responsabile.
+Così facendo si mantiene l'efficienza del lookup di una rete strutturata (O(log N)), permettendo la possibilità di posizionare
+il dato in un posizione vicina al client che vi accede.
 \subsection{Rete di replicazione}
+Raft, Dettagli implementativi da qui in giü
 \section{Storage locale}
-\section{Consistenza e semantica di errore}
+Interfaccia DB, Badger, Redis e transazioni
+\section{Consistenza e tolleranza ai guasti}
+Gli errori supportati sono solamente errori temporanei: se un nodo subisce crash, si assume che questo tornerà ad essere
+disponibile dopo un intervallo finito di tempo.
 \section{Migrazione}
+Sliding window, single thread che valuta e ricerca binaria
 \section{Integrazione con il cloud}
+RDS, Lambda, Gateway, DynamoDB con offloading e registrazione
 \section{Limitazioni}
+Max size dynamo, leave non ancora supportata, join e leave costose lineare per il numero di chiavi e per il numero di nodi(rete strutturata),
+delete sulla dht non implementata
+\section{Sviluppi futuri}
+SSS, possibile implementazione della leave, fantascientificamente network proximity
 \section{Testing}
+Come abbiamo fatto i test ed i risultati
 \section{Manuale d'uso}
+Dettagli su docker, porta utilizzata 50051,42424
 \subsection{Installazione}
+Utilizzo dei docker
 \subsection{Configurazione}
+File di configurazione
 \subsection{Esecuzione}
+Eseguire come docker che come non docker, all'inizio aspetta di avere una numero di nodi sufficiente
 
-Sottosezione del documento in cui inseriremo la relazione del progetto di sistemi
-distribuiti e cloud computing.
-
-\textbf{Ricorda che in caso di offloading su cloud rimane il campo value della DHT su cui mettere se è su Dynamo o S3}
-
-\textbf{Ricorda di dire che le porte della DHT possono anche non essere statiche per ogni nodo, ma le abbiamo messe così per esporle sui docker}
 
 \printbibliography
 
