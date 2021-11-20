@@ -15,7 +15,7 @@ const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 //test configuration const
 const (
-	stub          = false
+	stub          = true
 	onClosestPeer = false
 
 	//workers configuration
@@ -23,11 +23,14 @@ const (
 	minimumPeriod = 1
 
 	workerKeySize       = 50
-	workerThreads       = 50
-	maxWorkerThreads    = 100
+	workerThreads       = 30
+	maxWorkerThreads    = 101
 	increaseWorkerRatio = 10
 
-	repetitions = 50
+	minimumDataSize = 1
+
+	// TODO SET HIGHER
+	repetitions = 10
 
 	putRatio = 50
 	getRatio = 30
@@ -58,7 +61,8 @@ func generateData(size int, rows int) [][]byte {
 }
 
 func trafficGeneratorThread(addr []string) {
-	existingKey := workerKeys[0]
+	//existingKey := workerKeys[0]
+
 	for {
 		addrToConnect := addr[rand.Intn(len(addr))]
 		conn, grpcConn, _ := client.Connect(addrToConnect)
@@ -68,7 +72,7 @@ func trafficGeneratorThread(addr []string) {
 		x := rand.Intn(100)
 		if x < putRatio {
 			//putCase
-			data := generateData(rand.Intn(100), rand.Intn(10)+1)
+			data := generateData(rand.Intn(100)+minimumDataSize, rand.Intn(10)+1)
 			key := workerKeys[rand.Intn(len(workerKeys))]
 			err := conn.Put([]byte(key), data)
 			if err != nil {
@@ -76,14 +80,16 @@ func trafficGeneratorThread(addr []string) {
 			}
 		} else if x < putRatio+getRatio {
 			//getCase
-			_, err := conn.Get([]byte(existingKey))
+			key := workerKeys[rand.Intn(len(workerKeys))]
+			_, err := conn.Get([]byte(key))
 			if err != nil {
 				log.Fatal(err)
 			}
 		} else {
 			//appendCase
-			data := generateData(rand.Intn(100), rand.Intn(10)+1)
-			err := conn.Append([]byte(existingKey), data)
+			key := workerKeys[rand.Intn(len(workerKeys))]
+			data := generateData(rand.Intn(100)+minimumDataSize, rand.Intn(10)+1)
+			err := conn.Append([]byte(key), data)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -105,7 +111,7 @@ func putMeasure(peers []string) float64 {
 		time.Sleep(time.Duration(rand.Intn(clientPeriod))*time.Second + minimumPeriod*time.Second)
 		addrToConnect := peers[rand.Intn(len(peers))]
 		key := workerKeys[rand.Intn(len(workerKeys))]
-		data := generateData(rand.Intn(100), 2)
+		data := generateData(rand.Intn(100)+minimumDataSize, rand.Intn(10)+1)
 
 		conn, grpcConn, _ := client.Connect(addrToConnect)
 		start := time.Now()
@@ -114,6 +120,7 @@ func putMeasure(peers []string) float64 {
 			log.Fatal(err)
 		}
 		elapsed := time.Since(start)
+		log.Println(elapsed)
 		sum += elapsed
 
 		err = grpcConn.Close()
@@ -140,6 +147,7 @@ func getMeasure(peers []string) float64 {
 			log.Fatal(err)
 		}
 		elapsed := time.Since(start)
+		log.Println(elapsed)
 		sum += elapsed
 
 		err = grpcConn.Close()
@@ -158,7 +166,7 @@ func appendMeasure(peers []string) float64 {
 	for i := 0; i < repetitions; i++ {
 		time.Sleep(time.Duration(rand.Intn(clientPeriod))*time.Second + minimumPeriod*time.Second)
 		addrToConnect := peers[rand.Intn(len(peers))]
-		data := generateData(rand.Intn(100), 2)
+		data := generateData(rand.Intn(100)+minimumDataSize, rand.Intn(10)+1)
 		key := workerKeys[rand.Intn(len(workerKeys))]
 		conn, grpcConn, _ := client.Connect(addrToConnect)
 		start := time.Now()
@@ -167,6 +175,7 @@ func appendMeasure(peers []string) float64 {
 			log.Fatal(err)
 		}
 		elapsed := time.Since(start)
+		log.Println(elapsed)
 		sum += elapsed
 
 		err = grpcConn.Close()
@@ -182,7 +191,7 @@ func main() {
 	//addresses
 	//needed to gateway or stubReg
 	//TODO set confString
-	confString := ""
+	confString := "172.17.0.1"
 	var networkAddr []string
 	if stub {
 		networkAddr, _ = client.GetAllNodesLocal(confString)
@@ -191,7 +200,7 @@ func main() {
 	}
 
 	//workers key subset generation
-	workerKeys = make([]string, workerKeySize)
+	workerKeys = make([]string, 0)
 	for i := 0; i < workerKeySize; i++ {
 		workerKeys = append(workerKeys, strconv.FormatInt(int64(i), 10))
 	}
@@ -204,7 +213,7 @@ func main() {
 
 	//generate existing key
 	conn, grpcConn, _ := client.Connect(nearestPeer)
-	err = conn.Put([]byte(workerKeys[0]), generateData(rand.Intn(30), rand.Intn(5)+1))
+	err = conn.Put([]byte(workerKeys[0]), generateData(rand.Intn(30)+minimumDataSize, rand.Intn(5)+1))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -233,7 +242,7 @@ func main() {
 		{"Worker key size: " + strconv.FormatInt(workerKeySize, 10), "Max workers: " + strconv.FormatInt(maxWorkerThreads, 10)},
 		{"Increase worker ratio: " + strconv.FormatInt(increaseWorkerRatio, 10), "Put ratio: " + strconv.FormatInt(putRatio, 10)},
 		{"Get ratio: " + strconv.FormatInt(getRatio, 10), "Append ratio: " + strconv.FormatInt(100-getRatio-putRatio, 10)},
-		{"Measure repetitions: " + strconv.FormatInt(repetitions, 10)}, {"\n"}, {"Operation", "Actual workers", "Response time (Seconds)"}}
+		{"Measure repetitions: " + strconv.FormatInt(repetitions, 10)}, {"\n"}, {"Actual workers", "Response time (Milliseconds)"}}
 
 	//create files and write headers
 	putFile, err := os.OpenFile(putFileName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0775)
@@ -296,11 +305,17 @@ func main() {
 	//run tests
 	//TODO change format retValue
 	for workerCount := workerThreads; workerCount < maxWorkerThreads; workerCount += increaseWorkerRatio {
+		var line []string
+		var retValue float64
+
+		log.Printf("_______________________________%d Concurrent Threads___________________________\n", workerCount)
 		//Put test
 		time.Sleep(time.Duration(rand.Intn(clientPeriod))*time.Second + minimumPeriod*time.Second)
-		line := make([]string, 0)
-		retValue := putMeasure(clientPeers)
-		line = append(line, "Put", strconv.FormatInt(int64(workerCount), 10), fmt.Sprintf("%v", retValue))
+		line = make([]string, 0)
+		log.Println("Starting put measure")
+		retValue = putMeasure(clientPeers)
+		log.Println("Put Measure: ", retValue)
+		line = append(line, strconv.FormatInt(int64(workerCount), 10), fmt.Sprintf("%f", retValue))
 		err := putWriter.Write(line)
 		if err != nil {
 			return
@@ -309,8 +324,10 @@ func main() {
 		//Get test
 		time.Sleep(time.Duration(rand.Intn(clientPeriod))*time.Second + minimumPeriod*time.Second)
 		line = make([]string, 0)
+		log.Println("Starting get measure")
 		retValue = getMeasure(clientPeers)
-		line = append(line, "Get", strconv.FormatInt(int64(workerCount), 10), fmt.Sprintf("%v", retValue))
+		log.Println("Get Measure: ", retValue)
+		line = append(line, strconv.FormatInt(int64(workerCount), 10), fmt.Sprintf("%f", retValue))
 		err = getWriter.Write(line)
 		if err != nil {
 			return
@@ -319,8 +336,10 @@ func main() {
 		//Append test
 		time.Sleep(time.Duration(rand.Intn(clientPeriod))*time.Second + minimumPeriod*time.Second)
 		line = make([]string, 0)
+		log.Println("Starting append measure")
 		retValue = appendMeasure(clientPeers)
-		line = append(line, "Append", strconv.FormatInt(int64(workerCount), 10), fmt.Sprintf("%v", retValue))
+		log.Println("Append Measure: ", retValue)
+		line = append(line, strconv.FormatInt(int64(workerCount), 10), fmt.Sprintf("%f", retValue))
 		err = appendWriter.Write(line)
 		if err != nil {
 			return
@@ -329,7 +348,6 @@ func main() {
 		//increase workers
 		for i := 0; i < increaseWorkerRatio; i++ {
 			go trafficGeneratorThread(networkAddr)
-			workerCount++
 		}
 
 	}

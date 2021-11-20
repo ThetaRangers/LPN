@@ -384,7 +384,7 @@ func (s *server) AppendInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, 
 	} else {
 		c, _, _ := ContactServer(leader)
 
-		return c.AppendInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		return c.AppendInternal(context.Background(), in)
 	}
 }
 
