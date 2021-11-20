@@ -144,7 +144,7 @@ func (s *server) Get(ctx context.Context, in *pb.Key) (*pb.Value, error) {
 			return &pb.Value{Value: [][]byte{}}, err
 		}
 
-		return c.GetInternal(ctx, &pb.Key{Key: in.GetKey()})
+		return c.GetInternal(ctx, in)
 
 	} else {
 		channel <- migration.KeyOp{Key: key, Op: migration.ReadOperation, Mode: migration.Master}
@@ -193,7 +193,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			} else {
 				c, _, _ := ContactServer(leader)
 
-				_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+				_, err = c.PutInternal(context.Background(), in)
 			}
 
 			if err != nil {
@@ -243,7 +243,7 @@ func (s *server) Put(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 					return &pb.Ack{Msg: "Err"}, err
 				}
 
-				return c.PutInternal(ctx, &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+				return c.PutInternal(ctx, in)
 			} else {
 				channel <- migration.KeyOp{Key: key, Op: migration.WriteOperation, Mode: migration.Master}
 				return s.PutInternal(ctx, in)
@@ -281,7 +281,7 @@ func (s *server) PutInternal(ctx context.Context, in *pb.KeyValue) (*pb.Ack, err
 	} else {
 		c, _, _ := ContactServer(leader)
 
-		return c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+		return c.PutInternal(context.Background(), in)
 	}
 }
 
@@ -317,7 +317,7 @@ func (s *server) Append(ctx context.Context, in *pb.KeyValue) (*pb.Ack, error) {
 			} else {
 				c, _, _ := ContactServer(leader)
 
-				_, err = c.PutInternal(context.Background(), &pb.KeyValue{Key: in.GetKey(), Value: in.GetValue()})
+				_, err = c.PutInternal(context.Background(), in)
 			}
 
 			if err != nil {
@@ -429,7 +429,7 @@ func (s *server) DelInternal(ctx context.Context, in *pb.Key) (*pb.Ack, error) {
 		err = raftN.Del(in.GetKey())
 	} else {
 		c, _, _ := ContactServer(leader)
-		_, err = c.DelInternal(context.Background(), &pb.Key{Key: in.GetKey()})
+		_, err = c.DelInternal(context.Background(), in)
 	}
 	if err != nil {
 		return &pb.Ack{Msg: "Err"}, err
