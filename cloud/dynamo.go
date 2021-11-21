@@ -140,8 +140,13 @@ func AppendValue(svc *dynamodb.DynamoDB, tableName, key string, newValues [][]by
 	}
 
 	_, err := svc.UpdateItem(input)
-	if err != nil {
+	if err!= nil {
 		return err
 	}
+	/*for err != nil {
+		_, err = svc.UpdateItem(input)
+	}*/
+
+
 	return nil
 }
