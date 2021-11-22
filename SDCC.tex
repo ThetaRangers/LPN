@@ -226,24 +226,38 @@ inserire una nuova lambda per segnalare al database che un nodo sta uscendo dal 
 sono presenti cluster sovradimensionati. Nel caso in cui il cluster del nodo che sta uscendo dal sistema mantiene la dimensione minima, questo
 può continuare ad esistere.
 In caso contrario quel cluster deve essere rimosso ed i nodi devono trovare un nuovo cluster a cui aggiungersi.
-COGNITOOOOOO <-!->?grr
 \section{Testing}
-I test sono stati eseguiti su una rete locale(?) utilizzando 10 nodi. Per misurare le performance per le varie operazioni eseguite si è utilizzato
-una serie di thread che fanno operazioni sul sistema. All'aumentare del numero di thread concorrenti si misura la latenza per le varie operazioni supportate.
-Su 50 chiavi in concorrenza.
-Configurazione 1 Offloading a 4096 test generati con 15\% put e 85\% get 0-5000
-Configurazione 2 // 0-2048
-Configurazione 3 Offloading a 4096 test generati con 40\% put 20\% append 40\% get 0-5000
-Configurazione 4 all'aumentare del numero di chiavi
-I test sono stati eseguiti generando traffico e misurando con nodi in rete locale su un subset di chiavi comuni
-Thread connessi ognuno ad un singolo nodo per simulare lo use case effettivo
-Come abbiamo fatto i test ed i risultati
+La fase di testing è stata ideata per simulare un caso d'uso realistico del sistema. Il sistema è stato testato con una
+configurazione che prevede 10 nodi, organizzati in due cluster completi eseguiti su container dello stesso host. Per simulare la congestione del sistema sono stati
+utilizzati una serie di thread che generino traffico. Ogni thread si connette ad un nodo del sistema
+ed esegue operazioni di scrittura e lettura di una serie di chiavi, intervallate da attese di durata casuale. Per stimare le performance del sistema si
+è utilizzato un altro thread che richiede una serie di operazioni di scrittura e lettura misurando il tempo necessario per
+eseguirle. Sia il thread di misurazione che quelli di generazione del traffico lavorano sullo stesso insieme di chiavi.
+Il risultato della misurazione è la media tra 25 ripetizioni.
+Le misurazioni vengono effettuate all'aumentare dei client nel sistema. I casi di test sono:
+\begin{itemize}
+  \item Configurazione 1: traffico generato da 85\% get e 15\% put con dati inseriti di grandezza [1, 2048]byte
+  \item Configurazione 2: traffico generato da 85\% get e 15\% put con dati inseriti di grandezza [1, 5000]byte
+  \item Configurazione 3: traffico generato da 40\% get, 40\% append e 20\% put, con dati inseriti di grandezza [1, 5000]byte
+\end{itemize}
+Si è utilizzata la configurazione:
+\begin{itemize}
+  \item OffloadingThreashold: 4096
+  \item Databse: badger
+  \item ReplicationFactor: 5
+  \item MigrationWindowMinutes: 10
+  \item MigrationPeriodSeconds: 10
+  \item MigrationThreashold: 10
+  \item CostRead: 1
+  \item CostWrite: 2
+\end{itemize}
+
+Il primo caso di test ha l'obiettivo di valutare le performance del sistema in caso di operazioni che non usufruiscano del
+sevizio di offloading sul cloud. Il secondo caso di test valuta il comportamento del sistema con il sevizio di offloading su cloud.
+L'ultimo test valuta le performance nel caso di molte operazioni di scrittura nel sistema.
 
 \subsection{Risultato delle fasi di test}
-Tempo medio(?) di get locale è di circa 7 ms, in remoto 110 ms\\
-Tempo medio(?) di put locale è di circa 30 ms, in remoto 130 ms\\
-5 chiavi in concorrenza 1-2048
-85\% get, 15\% put Migrazione 10s offloading 4096
+
 \begin{figure}[h]
   \includegraphics[scale=0.5]{images/getlocal.png}
 \end{figure}
@@ -312,8 +326,29 @@ si può eseguire l'apposito container. I singoli nodi restano in attesa di poter
 sia possibile, l'ultimo nodo che ha richiesto la registrazione al servizio notifica i nodi in attesa della formazione di
 un cluster tramite apposite chiamate gRPC. Quando il numero di nodi nel sistema è pari o superiore al campo ReplicationFactor
 del file config.json, l'insieme dei nodi è in grado di ricevere e gestire connessioni di ingresso da parte dei client.
-SCRIVERE DA QUALCHE PARTE DI LIBRERIA CLIENT
-
+\subsection{Libreria Client}
+I client possono connetersi sfruttando l'apposita libreria, che fornisce un'astrazione per le operazioni di connessione
+al sistema e le chiamate a procedura remota. In particolare, è possibile avvalersi di questa per ricevere la lista dei
+nodi che compongono il sistema dal servizio di registrazione. Questa lista viene usata dalla libreria per eseguire dei
+ping in parallelo, al fine di individuare il nodo che fornisca la latenza minima di rete.
+È disponibile anche una command line interface per interagire con il sistema. Per utilizzare la cli si necessita di eseguire
+il comando \verb!go run cli.go!. I comandi supportati dalla cli sono:
+\begin{itemize}
+  \item connect [IP]: per connettersi ad un nodo del siste
+  \item nodes [cloud url]: per ottenere tutti i nodi del sistema
+  \item closest [cloud url]: per ottenere il nodo con latenza minore
+  \item lnodes [register server addr]: per ottenere tutti i nodi del sistema se si usa il server di testing
+  \item lclosest [register server addr]: per ottenere il nodo con latenza minore se si usa il server di testing
+  \item put [key] [value...]: per inserire un dato nel sistema
+  \item get [key]: per ottenere un dato dal sistema
+  \item append [key] [value...]: per eseguire l'operazione di append
+  \item del [key]: per cancellare un dato dal sistema
+  \item disconnect: per disconnettersi da un nodo
+  \item quit: per uscire dalla cli
+\end{itemize}
+Le sezioni dei comandi indicate tra parentesi quadre sono da intendersi come i parametri di questi. Nel caso in cui
+siano presenti anche tre punti, i parametri dello stesso tipo possono essere uno o più, separati da spazi. La cli, attualmente, non supporta
+l'inserimento di chiavi o valori contenenti spazi.
 
 \printbibliography
 
