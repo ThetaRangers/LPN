@@ -44,7 +44,7 @@ In questo documento si illustra una soluzione implementativa di uno storage chia
 \end{abstract}
 
 \begin{IEEEkeywords}
-sistemi distribuiti, peer-to-peer, edge computing, cloud computing, distributed system, key-value storage
+sistemi distribuiti, peer-to-peer, edge computing, cloud computing, distributed systems, key-value storage
 \end{IEEEkeywords}
 
 \section{Introduzione}
@@ -70,7 +70,7 @@ I vari nodi vengono identificati tramite il loro indirizzo IP.
 
 \subsection{Rete di indexing}
 Il sistema sfrutta la DHT di Kademlia per associare ad ogni chiave memorizzata l'indirizzo IP del nodo responsabile.
-Così facendo si mantiene l'efficienza del lookup di una rete strutturata (O(log(N))), permettendo la possibilità di posizionare
+Così facendo si mantiene l'efficienza del lookup di una rete strutturata (O(log(N))), permettendo di posizionare
 il dato in un nodo che minimizzi la latenza con il client che vi accede. La rete peer-to-peer memorizza inoltre per ogni
 nodo il cluster di replicazione a cui appartiene, in caso di crash del nodo responsabile è necessario eseguire un'altra richiesta sulla
 DHT per cercare una replica attiva del dato. La complessità totale dell'operazione resta O(log(N)).
@@ -92,7 +92,7 @@ L'insieme dei nodi del sistema è partizionato in un insieme di cluster di repli
 stesso cluster si replicano vicendevolmente e i dati sono mantenuti consistenti tramite Raft. La formazione dei cluster
 avviene quando i nodi richiedono l'ingresso nel sistema. Nel caso in cui non ci siano cluster già formati, i nodi aspettano
 l'ingresso di altri, per essere certi di poter assicurare un determinato livello di tolleranza ai guasti, che può essere
-configurato dall'amministratore. Quando la quantintà di nodi è sufficiente, questi formano un primo cluster. Gli ingressi successivi
+configurato dall'amministratore. Quando la quantità di nodi è sufficiente, questi formano un primo cluster. Gli ingressi successivi
 andranno a far parte di questo cluster, finché la dimensione di quest'ultimo non sarà due volte la dimensione minima di un
 cluster: in questo caso, metà dei nodi si staccheranno per formarne uno nuovo.
 
@@ -107,7 +107,7 @@ Lo storage locale di ogni nodo è stato implementato come un'interfaccia in grad
   \item {\small{\verb!GetAllKeys() ([]string, []string)!}}
 \end{itemize}
 L'uso di un'interfaccia permette un'astrazione a livello di codice ed una migliore semplicità di espansione del progetto
-al fine di supportare diverse tecnologie di storage. Attualmente, sono forinte due implementazioni della stessa interfaccia:
+al fine di supportare diverse tecnologie di storage. Attualmente, sono fornite due implementazioni della stessa interfaccia:
 una che fa uso di BadgerDB, on-disk, e l'altra di Redis, in-memory. L'interfaccia che sfrutta Redis, in particolare, si collega ad un indirizzo
 IP, che può essere esposto da un container. Alcune operazioni, come l'append, richiedono un'esecuzione transazionale dal
 momento che sfruttano una get seguita da una put. In Redis, sono state sfruttate le condizioni di lock ottimistico secondo
@@ -119,8 +119,8 @@ tramite Raft. L'algoritmo, prevedendo la presenza di un leader, garantisce l'ord
 secondo il suo ordine di programma. Si è tuttavia scelto di gestire le operazioni di get esternamente a Raft: nel caso
 in cui il dato sia presente sulla replica contattata, quest'ultima lo ritorna immediatamente, anche se potrebbe non essere
 la versione più aggiornata. Gli errori supportati sono solamente errori temporanei: se un nodo subisce crash, si assume
-che questo tornerà ad essere disponibile dopo un intervallo finito di tempo. La quantità massima di crash gestitibili
-in un signolo cluster in contemporanea dipende dalla dimensione minima del cluster configurata: per gestire k errori la
+che questo tornerà ad essere disponibile dopo un intervallo finito di tempo. La quantità massima di crash gestibili
+in un singolo cluster in contemporanea dipende dalla dimensione minima del cluster configurata: per gestire k errori la
 dimensione deve essere \(2k+1\). È opportuno notare che, essendo la dimensione di un cluster compresa tra \(2k+1\) e
 \(4k+1\), i cluster più grandi potrebbero essere in grado di tollerare più di k guasti. I nodi comunicano tra loro e con
 i client tramite chiamate gRPC. La semantica di errore nelle chiamate a procedura remota è stata resa at-least-once impostando
@@ -154,8 +154,8 @@ In generale si è preferito un approccio serverless utilizzando Lambda piuttosto
 dalla volontà di garantire tutti i vantaggi del serverless computing. In particolare, data la necessità di utilizzare questo servizio solo
 in fase di registrazione, si è preferito un servizio pay-per-use piuttosto che mantenere accesa un'istanza EC2, che potrebbe
 ricevere poche richieste quando il sistema è ormai a regime.\\
-Al livello teorico, inoltre, EC2 potrebbe rappresentare un single point of failure nonchè collo di bottiglia in caso di più
-richieste concorrenti. Per ovviare a ciò sarebbe stato necessario generare più instanze con un load balancer.
+Al livello teorico, inoltre, EC2 potrebbe rappresentare un single point of failure nonché collo di bottiglia in caso di più
+richieste concorrenti. Per ovviare a ciò sarebbe stato necessario generare più istanze con un load balancer.
 Le Lambda permettono invece di bypassare questi problemi con l'unico svantaggio del cold start che diventa trascurabile
 dopo le prime invocazioni.
 
@@ -164,8 +164,8 @@ Questo servizio gestisce i cluster di replicazione. Tiene conto dell'eventuale g
 crash temporaneo dei nodi edge, nel caso in cui non ci siano abbastanza nodi per generare il primo cluster e il supporto alla
 gestione dei nodi Bootstrap per la rete di indexing. Tutto ciò viene fatto in maniera completamente trasparente al nodo edge che riceve semplicemente la lista
 degli IP del suo cluster.\\
-Tutti i dati vengono mantenuti in un'instanza RDS, le query vengono effettuate tramite invocazioni a funzioni Lambda implementate
-in Python. Per ragioni di sicurezza è stata generata una VPC in cui vive l'instanza RDS.
+Tutti i dati vengono mantenuti in un'istanza RDS, le query vengono effettuate tramite invocazioni a funzioni Lambda implementate
+in Python. Per ragioni di sicurezza è stata generata una VPC in cui vive l'istanza RDS.
 
 \subsection{Offloading}
 La rete è formata da nodi edge, ossia nodi con limitata capacità computazionale e di memoria, inoltre il contesto
@@ -179,7 +179,7 @@ Il client per contattare il nodo edge con latenza minore ha necessità di conosc
 metodo di verifica della latenza. Questa necessità è stata ovviata tramite la realizzazione di un supporto serverless.
 In particolare i servizi utilizzati sono:
 \begin{itemize}
-  \item {RDS: }instanza di database relazionale che mantiene tutti i metadati dei nodi edge e dei loro cluster.
+  \item {RDS: }istanza di database relazionale che mantiene tutti i metadati dei nodi edge e dei loro cluster.
   \item {Lambda: }servizio serverless per fare query all'istanza RDS
   \item {Gateway: }utilizzato per invocare la Lambda che comunica con il database senza la necessità di avere credenziali
                   per poterla invocare.\\
@@ -187,9 +187,9 @@ In particolare i servizi utilizzati sono:
                   Un possibile upgrade è quello di realizzare un meccanismo di autenticazione per i client sfruttando
                   ad esempio Cognito.
 \end{itemize}
-L'instanziazione di tutti i servizi cloud è stato automatizato tramite l'utilizzo di Terraform.
-Per rendere il tutto ancora più semplice è stato creato uno script bash che garantisce la fase di preparazione e quella di run dei vari comandi Terraform.
-In particolare necessita solo di un file .vars con i dati sensibili dell'istanza RDS ossia username e password.
+L'istanziazione di tutti i servizi cloud è stato automatizzato tramite l'utilizzo di Terraform.
+Per rendere il tutto ancora più semplice è stato creato uno script bash che esegue la fase di preparazione e quella di run dei vari comandi Terraform.
+In particolare necessita solo di un file .vars con i dati sensibili dell'istanza RDS, ovvero username e password.
 Infine è stato creato anche uno script complementare al setup che automatizza la destroy di tutti i servizi AWS ed il clean in locale dei file
 generati per la configurazione.
 
@@ -220,7 +220,7 @@ sulla DHT ed aggiungere euristiche di network proximity sulla rete overlay.\cite
 Si è valutata anche la possibilità di includere un servizio di network coordinates come Vivaldi\cite{vivaldi} o Pharos.\cite{pharos}
 La presenza di un sistema simile permetterebbe una maggior semplicità nell'applicazione di ottimizzazioni basate sulla
 prossimità di rete e fornirebbe un approccio più immediato per i client al fine di connettersi ai nodi con minore latenza
-nei loro confronti. Attualmente i client possono richedere l'intera lista dei nodi edge e valutare la latenza verso ciascuno
+nei loro confronti. Attualmente i client possono richiedere l'intera lista dei nodi edge e valutare la latenza verso ciascuno
 con le rpc di ping che sono ad ora implementate.
 L'implementazione della leave di un nodo dal cluster non è attualmente supportata. Per supportare questa operazione è necessario
 inserire una nuova lambda per segnalare al database che un nodo sta uscendo dal sistema. Il database dovrà preoccuparsi di vedere se
@@ -244,12 +244,12 @@ Le misurazioni vengono effettuate all'aumentare dei client nel sistema. I casi d
 \end{itemize}
 Si è utilizzata la configurazione:
 \begin{itemize}
-  \item OffloadingThreashold: 4096
+  \item OffloadingThreshold: 4096
   \item Databse: badger
   \item ReplicationFactor: 5
   \item MigrationWindowMinutes: 10
   \item MigrationPeriodSeconds: 10
-  \item MigrationThreashold: 10
+  \item MigrationThreshold: 10
   \item CostRead: 1
   \item CostWrite: 2
 \end{itemize}
@@ -263,8 +263,7 @@ L'ultimo test valuta le performance nel caso di molte operazioni di scrittura ne
 \subsubsection{Configurazione 1}
 Dai risultati del primo test case si può osservare il comportamento del sistema senza l'influenza del cloud.
 Si può vedere come i tempi di risposta del sistema rimangono costanti all'aumentare dei thread in concorrenza.
-I thread in concorrenza operano su 5 chiavi. Le operazioni di lettura si mantengono stabili all'aumentare dei thread in concorrenza
-poiché non subiscono l'influenza del sistema di replicazione.
+Il test è effettuato con 5 e con 50 chiavi in concorrenza.
 \begin{figure}[H]
   \includegraphics[scale=0.5]{images/getlocal.png}
 \end{figure}
@@ -312,7 +311,7 @@ chiamate gRPC, la porta 42424 per interagire con gli altri nodi nelle operazioni
 \subsection{Installazione}
 Una volta scaricati i file sorgente, è possibile compilarli con il comando \verb!make executable!, che va a generare il
 file eseguibile ``server'' C'è anche la possibilità di generare un'immagine docker con il comando \verb!make docker!, che
-può essere eseguita con il comando \verb!docker run -it app!. Le istruzioni per installare le dipendenze sono presenti nel
+può essere eseguita con il comando \verb!docker run -it lpn!. Le istruzioni per installare le dipendenze sono presenti nel
 file README.md.
 
 \subsection{Configurazione}
@@ -323,7 +322,7 @@ proprietà sono scritte nel file config.json:
 differente per ogni nodo.
   \item {DbAddress} indica l'indirizzo IP in cui è reperibile il database che implementa lo storage locale del nodo.
 Questo indirizzo è particolarmente utile nel caso in cui il database si trovi su un altro container o preveda questa metodologia
-di accesso.
+di accesso. Non è utilizzato nel caso in cui il database sia Badger.
   \item {RequestTimeoutMilliseconds} indica dopo quanti millisecondi è possibile considerare fallita una chiamata gRPC che non
 ha ricevuto alcuna risposta.
   \item {ReplicationFactor} indica la grandezza minima del cluster. Sarebbe buona norma impostare questo valore a \(2k + 1\),
@@ -354,14 +353,14 @@ sia possibile, l'ultimo nodo che ha richiesto la registrazione al servizio notif
 un cluster tramite apposite chiamate gRPC. Quando il numero di nodi nel sistema è pari o superiore al campo ReplicationFactor
 del file config.json, l'insieme dei nodi è in grado di ricevere e gestire connessioni di ingresso da parte dei client.
 \subsection{Libreria Client}
-I client possono connetersi sfruttando l'apposita libreria, che fornisce un'astrazione per le operazioni di connessione
+I client possono connettersi sfruttando l'apposita libreria, che fornisce un'astrazione per le operazioni di connessione
 al sistema e le chiamate a procedura remota. In particolare, è possibile avvalersi di questa per ricevere la lista dei
 nodi che compongono il sistema dal servizio di registrazione. Questa lista viene usata dalla libreria per eseguire dei
 ping in parallelo, al fine di individuare il nodo che fornisca la latenza minima di rete.
 È disponibile anche una command line interface per interagire con il sistema. Per utilizzare la cli si necessita di eseguire
 il comando \verb!go run cli.go!. I comandi supportati dalla cli sono:
 \begin{itemize}
-  \item connect [IP]: per connettersi ad un nodo del siste
+  \item connect [IP]: per connettersi ad un nodo del sistema
   \item nodes [cloud url]: per ottenere tutti i nodi del sistema
   \item closest [cloud url]: per ottenere il nodo con latenza minore
   \item lnodes [register server addr]: per ottenere tutti i nodi del sistema se si usa il server di testing
