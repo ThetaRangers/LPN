@@ -1,13 +1,13 @@
 version: "3.9"
 services:
   app1:
-    image: app
+    image: lpn
     network_mode: bridge
     volumes:
       - volumeapp1:/app/data
       - ./config.json:/app/config.json
   app2:
-    image: app
+    image: lpn
     network_mode: bridge
     depends_on:
       - app1
@@ -15,7 +15,7 @@ services:
       - volumeapp2:/app/data
       - ./config.json:/app/config.json
   app3:
-    image: app
+    image: lpn
     network_mode: bridge
     depends_on:
       - app2
@@ -23,7 +23,7 @@ services:
       - volumeapp3:/app/data
       - ./config.json:/app/config.json
   app4:
-    image: app
+    image: lpn
     network_mode: bridge
     depends_on:
       - app3
@@ -31,7 +31,7 @@ services:
       - volumeapp4:/app/data
       - ./config.json:/app/config.json
   app5:
-    image: app
+    image: lpn
     network_mode: bridge
     depends_on:
       - app4
@@ -39,7 +39,7 @@ services:
       - volumeapp5:/app/data
       - ./config.json:/app/config.json
   app6:
-    image: app
+    image: lpn
     network_mode: bridge
     depends_on:
       - app5
@@ -47,7 +47,7 @@ services:
       - volumeapp6:/app/data
       - ./config.json:/app/config.json
   app7:
-    image: app
+    image: lpn
     network_mode: bridge
     depends_on:
       - app6
@@ -55,7 +55,7 @@ services:
       - volumeapp7:/app/data
       - ./config.json:/app/config.json
   app8:
-    image: app
+    image: lpn
     network_mode: bridge
     depends_on:
       - app7
@@ -63,7 +63,7 @@ services:
       - volumeapp8:/app/data
       - ./config.json:/app/config.json
   app9:
-    image: app
+    image: lpn
     network_mode: bridge
     depends_on:
       - app8
@@ -71,7 +71,7 @@ services:
       - volumeapp9:/app/data
       - ./config.json:/app/config.json
   app10:
-    image: app
+    image: lpn
     network_mode: bridge
     depends_on:
       - app9

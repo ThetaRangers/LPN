@@ -6,6 +6,7 @@
 \usepackage[pdfpagelabels]{hyperref}
 \usepackage{url}
 \usepackage{graphicx}
+\usepackage{float}
 
 \usepackage[sorting=none]{biblatex}
 \addbibresource{SDCC.bib}
@@ -236,9 +237,10 @@ eseguirle. Sia il thread di misurazione che quelli di generazione del traffico l
 Il risultato della misurazione è la media tra 25 ripetizioni.
 Le misurazioni vengono effettuate all'aumentare dei client nel sistema. I casi di test sono:
 \begin{itemize}
-  \item Configurazione 1: traffico generato da 85\% get e 15\% put con dati inseriti di grandezza [1, 2048]byte
-  \item Configurazione 2: traffico generato da 85\% get e 15\% put con dati inseriti di grandezza [1, 5000]byte
-  \item Configurazione 3: traffico generato da 40\% get, 40\% append e 20\% put, con dati inseriti di grandezza [1, 5000]byte
+  \item Configurazione 1: traffico generato da 85\% get e 15\% put con dati inseriti di grandezza [1, 2048] byte
+  \item Configurazione 2: traffico generato da 85\% get e 15\% put con dati inseriti di grandezza [1, 5000] byte
+  \item Configurazione 3: traffico generato da 85\% get e 15\% put con dati inseriti di grandezza [1, 200] byte
+  \item Configurazione 4: traffico generato da 40\% get, 40\% append e 20\% put, con dati inseriti di grandezza [1, 200] byte
 \end{itemize}
 Si è utilizzata la configurazione:
 \begin{itemize}
@@ -254,24 +256,49 @@ Si è utilizzata la configurazione:
 
 Il primo caso di test ha l'obiettivo di valutare le performance del sistema in caso di operazioni che non usufruiscano del
 sevizio di offloading sul cloud. Il secondo caso di test valuta il comportamento del sistema con il sevizio di offloading su cloud.
+Il terzo test case è uno stress test del sistema in cui si va a simulare un carico elevato proveniente da molti client.
 L'ultimo test valuta le performance nel caso di molte operazioni di scrittura nel sistema.
 
 \subsection{Risultato delle fasi di test}
-
-\begin{figure}[h]
+\subsubsection{Configurazione 1}
+Dai risultati del primo test case si può osservare il comportamento del sistema senza l'influenza del cloud.
+Si può vedere come i tempi di risposta del sistema rimangono costanti all'aumentare dei thread in concorrenza.
+I thread in concorrenza operano su 5 chiavi. Le operazioni di lettura si mantengono stabili all'aumentare dei thread in concorrenza
+poiché non subiscono l'influenza del sistema di replicazione.
+\begin{figure}[H]
   \includegraphics[scale=0.5]{images/getlocal.png}
 \end{figure}
-\begin{figure}[h]
+\begin{figure}[H]
   \includegraphics[scale=0.5]{images/putlocal.png}
 \end{figure}
 
-5 chiavi in concorrenza 1-2048
-85\% get, 15\% put Migrazione 10s offloading 4096
-\begin{figure}[h]
+\subsubsection{Configurazione 2}
+Nel secondo caso di test si può osservare l'influenza del cloud sui tempi di risposta del sistema. Rispetto al caso precedente
+si hanno tempi di risposta superiori per le operazioni di get e put.
+I thread insistono su un insieme di 5 chiavi.
+Con l'aumentare dei thread concorrenti il tempo di risposta delle operazioni di scrittura cresce, mentre il tempo di risposta
+delle operazioni di lettura rimane pressoché costante.
+\begin{figure}[H]
   \includegraphics[scale=0.5]{images/get.png}
 \end{figure}
-\begin{figure}[h]
+\begin{figure}[H]
   \includegraphics[scale=0.5]{images/put.png}
+\end{figure}
+
+\subsubsection{Configurazione 3}
+In questo test case si è testato il comportamento del sistema con un numero elevato di thread concorrenti. I dati inseriti
+dai vari thread sono compresi tra 1 e 200 byte. Le prestazioni del sistema restano apprezzabili anche con un numero elevato di thread concorrenti.
+I thread insistono su un insieme di 100 chiavi.
+\begin{figure}[H]
+  \includegraphics[scale=0.4]{images/stress.png}
+\end{figure}
+
+\subsubsection{Configurazione 4}
+Da quest'ultimo test case si può osservare il comportamento del sistema con una prevalenza di operazioni di scrittura.
+Entrambe le operazioni di scrittura presentano un tempo di risposta simile.
+I thread insistono su un insieme di 100 chiavi.
+\begin{figure}[H]
+  \includegraphics[scale=0.4]{images/conf3.png}
 \end{figure}
 
 \section{Manuale d'uso}

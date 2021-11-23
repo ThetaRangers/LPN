@@ -11,7 +11,7 @@ executable:
 	GOOS=linux GOARCH=amd64 go build server.go
 
 docker_image:
-	DOCKER_BUILDKIT=1 docker build -t app .
+	DOCKER_BUILDKIT=1 docker build -t lpn .
 
 cli:
 	DOCKER_BUILDKIT=1 docker build -f DockerfileCli -t lpn-cli .
