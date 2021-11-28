@@ -14,4 +14,4 @@ COPY cli.go ./cli.go
 
 #RUN go build cli.go
 
-CMD ["/usr/local/go run /app/cli.go"]
+#CMD ["/usr/local/go run /app/cli.go"]

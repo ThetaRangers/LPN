@@ -1,6 +1,6 @@
 {
-  "Database": "badger",
-  "DbAddress": "10.220.71.245:6379",
+  "Database": "redis",
+  "DbAddress": "192.168.1.49:6379",
   "RequestTimeoutMilliseconds": 1000,
   "ReplicationFactor": 5,
   "OffloadingThreshold": 4096,

@@ -450,19 +450,24 @@ func (s *server) Migration(ctx context.Context, in *pb.KeyCost) (*pb.Outcome, er
 	log.Printf("Received migration request for %s: %d-%d", k, cost, in.GetCost())
 
 	if cost < in.GetCost() {
+		log.Println("Migration accepted")
 		// Do migration
 		value, err := utils.Database.Get(keyBytes)
 		if err != nil {
+			log.Println(err)
 			return &pb.Outcome{Out: false}, nil
 		}
 
-		err = raftN.Del(keyBytes)
+		_, err = s.DelInternal(ctx, &pb.Key{Key: keyBytes})
 		if err != nil {
+			log.Println(err)
 			return &pb.Outcome{Out: false}, nil
 		}
 
 		migration.SetExported(k)
 		keyDb.DelKey(k)
+
+		log.Println("Migrated")
 
 		return &pb.Outcome{Out: true, Value: value}, nil
 	} else {
@@ -646,9 +651,16 @@ func houseKeeper(ctx context.Context) {
 			migration.SetMigrated(k)
 
 			keyDb.PutKey(k)
-			err = raftN.Put([]byte(k), val)
-			if err != nil {
+			leader := raftN.GetLeader()
+			if leader == ip.String() {
+				raftN.Put([]byte(k), val)
+			} else {
+				c, _, _ := ContactServer(leader)
+
+				_, err := c.PutInternal(context.Background(), &pb.KeyValue{Key: []byte(k), Value: val})
+				if err != nil {
 				return
+			}
 			}
 
 			// Modify dht
