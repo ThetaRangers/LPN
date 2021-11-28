@@ -6,6 +6,7 @@ services:
     volumes:
       - volumeapp1:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
   app2:
     image: lpn
     network_mode: bridge
@@ -14,6 +15,7 @@ services:
     volumes:
       - volumeapp2:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
   app3:
     image: lpn
     network_mode: bridge
@@ -22,6 +24,7 @@ services:
     volumes:
       - volumeapp3:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
   app4:
     image: lpn
     network_mode: bridge
@@ -30,6 +33,7 @@ services:
     volumes:
       - volumeapp4:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
   app5:
     image: lpn
     network_mode: bridge
@@ -38,6 +42,7 @@ services:
     volumes:
       - volumeapp5:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
   app6:
     image: lpn
     network_mode: bridge
@@ -46,6 +51,7 @@ services:
     volumes:
       - volumeapp6:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
   app7:
     image: lpn
     network_mode: bridge
@@ -54,6 +60,7 @@ services:
     volumes:
       - volumeapp7:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
   app8:
     image: lpn
     network_mode: bridge
@@ -62,6 +69,7 @@ services:
     volumes:
       - volumeapp8:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
   app9:
     image: lpn
     network_mode: bridge
@@ -70,6 +78,7 @@ services:
     volumes:
       - volumeapp9:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
   app10:
     image: lpn
     network_mode: bridge
@@ -78,6 +87,7 @@ services:
     volumes:
       - volumeapp10:/app/data
       - ./config.json:/app/config.json
+      - ./.aws:/app/.aws
 
 volumes:
   volumeapp1:
