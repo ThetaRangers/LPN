@@ -76,6 +76,7 @@ func (f FSM) Apply(log *raft.Log) interface{} {
 			val, err := (*f.db).Append(payload.Key, payload.Value)
 			if err == nil {
 				if utils.GetSize(val) > utils.Threshold {
+					keyDb.DelKey(string(payload.Key))
 					err = (*f.db).Del(payload.Key)
 					return &AppendResponse{
 						Error: err,
