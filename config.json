@@ -10,7 +10,7 @@
   "MigrationThreshold": 10,
   "Subnet": "172.16.0.0/12",
   "TestingServer": "192.168.1.49",
-  "TestingMode": true,
+  "TestingMode": false,
   "AwsRegion": "us-east-1",
   "CostRead": 1,
   "CostWrite": 2,
